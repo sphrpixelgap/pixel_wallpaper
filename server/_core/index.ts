@@ -2,6 +2,11 @@ import "dotenv/config";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { createServer } from "http";
 import { Readable } from "node:stream";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
+import { tmpdir } from "node:os";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { publicPlatformScript } from "./publicConfig";
@@ -9,12 +14,23 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { getAdminSessionFromRequest } from "../admin-auth";
 import { hasAdminPermission } from "../../shared/admin-permissions";
-import { getSitemapWallpapers, getWallpaperDownloadTarget, recordWallpaperDownload } from "../db";
+import { createWallpaper, getSitemapWallpapers, getWallpaperDownloadTarget, recordWallpaperDownload } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { serveStatic, setupVite } from "./vite";
 import { buildRobotsTxt, buildSitemapXml } from "../seo";
 
 const MAX_WALLPAPER_BYTES = 12 * 1024 * 1024;
+const execFileAsync = promisify(execFile);
+
+function importGameName(filePath: string): string {
+  const parts = filePath.split(/[\\/]+/).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 2].replace(/[_-]+/g, " ").trim() : "گیمینگ";
+}
+
+function importMime(filePath: string): "image/png" | "image/jpeg" | "image/webp" | null {
+  const ext = filePath.toLowerCase().split(".").pop();
+  return ext === "png" ? "image/png" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : null;
+}
 
 function requireWallpaperOrSettingsPermission(req: Request, res: Response, next: NextFunction) {
   void getAdminSessionFromRequest(req).then(session => {
@@ -78,6 +94,63 @@ async function startServer() {
     res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
   });
   registerOAuthRoutes(app);
+  app.post("/api/admin/import-zip", express.raw({ type: "application/zip", limit: "45mb" }), async (req, res) => {
+    const expected = process.env.BULK_IMPORT_TOKEN?.trim();
+    if (!expected || req.get("x-import-token") !== expected) {
+      res.status(401).json({ error: "توکن import نامعتبر است." });
+      return;
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      res.status(400).json({ error: "آرشیو ZIP خالی است." });
+      return;
+    }
+    const work = await mkdtemp(join(tmpdir(), "pixelwp-import-"));
+    const zipPath = join(work, "batch.zip");
+    await writeFile(zipPath, req.body);
+    try {
+      const extracted = join(work, "files");
+      await mkdir(extracted);
+      await execFileAsync("unzip", ["-q", zipPath, "-d", extracted]);
+      const { stdout } = await execFileAsync("find", [extracted, "-type", "f"]);
+      const files = stdout.split("\n").map(value => value.trim()).filter(Boolean).filter(value => Boolean(importMime(value)));
+      let imported = 0;
+      let skipped = 0;
+      for (const filePath of files) {
+        const file = await readFile(filePath);
+        const mime = importMime(filePath)!;
+        if (file.length === 0 || file.length > MAX_WALLPAPER_BYTES) { skipped++; continue; }
+        const gameTitle = importGameName(filePath);
+        const originalName = basename(filePath).replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+        const title = `${gameTitle} - ${originalName}`.slice(0, 180);
+        const uploaded = await storagePut(`wallpapers/${crypto.randomUUID()}.${mime.split("/")[1]}`, file, mime);
+        await createWallpaper({
+          title: title || gameTitle,
+          category: "گیمینگ",
+          gameTitle,
+          tags: gameTitle,
+          mood: "سایر",
+          dominantColor: "purple",
+          targetDevice: "desktop",
+          resolution: "original",
+          width: null,
+          height: null,
+          description: `والپیپر بازی ${gameTitle}`,
+          imageKey: uploaded.key,
+          imageUrl: uploaded.url,
+          imageMime: mime,
+          fileSize: file.length,
+          publicationStatus: "published",
+        });
+        imported++;
+      }
+      res.status(201).json({ imported, skipped, total: files.length });
+    } catch (error) {
+      console.error("[Bulk import] Failed", error instanceof Error ? error.message : "unknown error");
+      res.status(500).json({ error: "انتقال این بخش انجام نشد." });
+    } finally {
+      await rm(work, { recursive: true, force: true }).catch(() => undefined);
+    }
+  });
   app.post("/api/admin/upload", requireWallpaperOrSettingsPermission, express.raw({ type: "image/*", limit: MAX_WALLPAPER_BYTES }), async (req, res) => {
     try {
       if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
