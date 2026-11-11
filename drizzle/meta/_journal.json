@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1788785580464,
+      "tag": "0000_initial_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1793478401352,
+      "tag": "0001_brown_master_mold",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1793530764239,
+      "tag": "0002_thankful_zarek",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1793531948430,
+      "tag": "0003_omniscient_leper_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1793533191817,
+      "tag": "0004_steady_george_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1793541174150,
+      "tag": "0005_right_squadron_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1793541705125,
+      "tag": "0006_massive_centennial",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1793620571027,
+      "tag": "0007_equal_zaladane",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1793632712023,
+      "tag": "0008_shared_client_request_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1793712173655,
+      "tag": "0009_admin_password_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1793723193816,
+      "tag": "0010_admin_section_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1793809210345,
+      "tag": "0011_dashboard_workflows",
+      "breakpoints": true
+    }
+  ]
+}
