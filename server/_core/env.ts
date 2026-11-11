@@ -9,4 +9,7 @@ export const ENV = {
   get isProduction() { return process.env.NODE_ENV === "production"; },
   get forgeApiUrl() { return process.env.MANUS_API_URL ?? ""; },
   get forgeApiKey() { return process.env.MANUS_API_KEY ?? ""; },
+  get imageKitUrlEndpoint() { return process.env.IMAGEKIT_URL_ENDPOINT ?? ""; },
+  get imageKitPublicKey() { return process.env.IMAGEKIT_PUBLIC_KEY ?? ""; },
+  get imageKitPrivateKey() { return process.env.IMAGEKIT_PRIVATE_KEY ?? ""; },
 };

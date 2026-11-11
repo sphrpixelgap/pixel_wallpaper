@@ -43,7 +43,7 @@ const variantFields = z.object({
   height: z.number().int().positive().max(20000),
   targetDevice: z.enum(["desktop", "mobile", "ultrawide"]),
   imageKey: z.string().min(1).max(512),
-  imageUrl: z.string().startsWith("/manus-storage/").max(1024),
+  imageUrl: z.string().url().startsWith("https://").max(1024),
   imageMime: z.enum(["image/png", "image/jpeg", "image/webp"]),
   fileSize: z.number().int().min(0).max(12 * 1024 * 1024),
 });
@@ -61,11 +61,11 @@ const wallpaperFields = z.object({
   height: z.number().int().positive().max(20000).nullable().optional(),
   description: z.string().trim().max(3000).optional().nullable(),
   imageKey: z.string().min(1).max(512),
-  imageUrl: z.string().startsWith("/manus-storage/").max(1024),
+  imageUrl: z.string().url().startsWith("https://").max(1024),
   imageMime: z.enum(["image/png", "image/jpeg", "image/webp"]).optional(),
   fileSize: z.number().int().min(0).max(12 * 1024 * 1024).optional(),
   thumbnailKey: z.string().max(512).optional().nullable(),
-  thumbnailUrl: z.string().startsWith("/manus-storage/").max(1024).optional().nullable(),
+  thumbnailUrl: z.string().url().startsWith("https://").max(1024).optional().nullable(),
 });
 
 const wallpaperRequestFields = z.object({
