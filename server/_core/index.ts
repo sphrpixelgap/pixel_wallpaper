@@ -9,7 +9,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { getAdminSessionFromRequest } from "../admin-auth";
 import { hasAdminPermission } from "../../shared/admin-permissions";
-import { getSitemapWallpapers, getWallpaperDownloadTarget, recordWallpaperDownload } from "../db";
+import { getSitemapWallpapers, getWallpaperDownloadTarget, publishAllPendingWallpapers, recordWallpaperDownload } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { serveStatic, setupVite } from "./vite";
 import { buildRobotsTxt, buildSitemapXml } from "../seo";
@@ -59,6 +59,10 @@ function sendDownloadFailure(res: Response, message: string, error?: unknown) {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  if (process.env.AUTO_PUBLISH_PENDING_WALLPAPERS === "true") {
+    const published = await publishAllPendingWallpapers();
+    console.log(`[Wallpaper import repair] Published ${published} pending wallpapers.`);
+  }
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));

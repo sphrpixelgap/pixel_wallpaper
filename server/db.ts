@@ -130,6 +130,13 @@ export async function listWallpapers(filters: WallpaperFilters = {}) {
   return db.select().from(wallpapers).where(wallpaperWhere(db, filters)).orderBy(...ordering).limit(Math.min(Math.max(filters.limit ?? 120, 1), 120));
 }
 
+export async function publishAllPendingWallpapers() {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.update(wallpapers).set({ publicationStatus: "published" }).where(and(eq(wallpapers.isArchived, 0), eq(wallpapers.publicationStatus, "pending")));
+  return Number(result[0]?.affectedRows ?? 0);
+}
+
 export async function listWallpapersPage(filters: WallpaperFilters, page: number, pageSize = 24) {
   const db = await getDb();
   if (!db) return { items: [], total: 0, page, pageSize };
