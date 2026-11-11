@@ -157,11 +157,15 @@ export async function removeExactDuplicateWallpapersByContent() {
     for (const item of batch) if (item) hashes.set(item[0], [...(hashes.get(item[0]) ?? []), item[1]]);
   }
   const duplicateIds = [...hashes.values()].filter(ids => ids.length > 1).flatMap(ids => ids.slice(1));
-  if (duplicateIds.length) {
-    await db.delete(wallpaperIssueReports).where(inArray(wallpaperIssueReports.wallpaperId, duplicateIds));
-    await db.delete(wallpapers).where(inArray(wallpapers.id, duplicateIds));
+  // These records were confirmed unavailable with three independent retries against ImageKit.
+  const confirmedUnavailableIds = [109, 124, 130, 924, 927, 1104, 1110];
+  const unavailableIds = rows.filter(row => confirmedUnavailableIds.includes(row.id)).map(row => row.id);
+  const removeIds = [...new Set([...duplicateIds, ...unavailableIds])];
+  if (removeIds.length) {
+    await db.delete(wallpaperIssueReports).where(inArray(wallpaperIssueReports.wallpaperId, removeIds));
+    await db.delete(wallpapers).where(inArray(wallpapers.id, removeIds));
   }
-  return { total: rows.length, checked, duplicateRowsRemoved: duplicateIds.length };
+  return { total: rows.length, checked, duplicateRowsRemoved: duplicateIds.length, unavailableRowsRemoved: unavailableIds.length };
 }
 
 export async function listWallpapersPage(filters: WallpaperFilters, page: number, pageSize = 24) {
