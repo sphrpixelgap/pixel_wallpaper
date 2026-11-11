@@ -1,14 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { ArrowLeft, KeyRound, LogIn, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Link } from "wouter";
-import { startLogin } from "@/const";
-import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 
 type AdminAuthStatus = RouterOutputs["adminAuth"]["status"];
 
 export default function AdminAuthGate({ status }: { status: AdminAuthStatus }) {
-  const auth = useAuth();
   const utils = trpc.useUtils();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -19,22 +16,11 @@ export default function AdminAuthGate({ status }: { status: AdminAuthStatus }) {
   const [success, setSuccess] = useState("");
   const login = trpc.adminAuth.login.useMutation();
   const bootstrap = trpc.adminAuth.bootstrapOwner.useMutation();
-  const recovery = trpc.adminAuth.recoverOwner.useMutation();
   const logout = trpc.adminAuth.logout.useMutation();
   const changePassword = trpc.adminAuth.changePassword.useMutation();
 
   async function refreshStatus() {
     await utils.adminAuth.status.invalidate();
-  }
-
-  async function beginOwnerOAuth() {
-    setError("");
-    try {
-      if (auth.user) await auth.logout();
-      startLogin({ returnTo: "admin" });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "ورود Manus شروع نشد.");
-    }
   }
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
@@ -70,12 +56,6 @@ export default function AdminAuthGate({ status }: { status: AdminAuthStatus }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "تغییر رمز انجام نشد."); }
   }
 
-  async function recoverOwner() {
-    setError(""); setSuccess("");
-    try { await recovery.mutateAsync(); await refreshStatus(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "بازیابی ورود انجام نشد."); }
-  }
-
   async function signOutAdmin() {
     setError("");
     try { await logout.mutateAsync(); await refreshStatus(); }
@@ -101,17 +81,13 @@ export default function AdminAuthGate({ status }: { status: AdminAuthStatus }) {
         </form>
       </> : isBootstrapping ? <>
         <h2><ShieldCheck size={18} style={{ verticalAlign: "middle", marginLeft: 8 }} />ساخت حساب مالک</h2>
-        <p>حساب مالک فقط یک‌بار و با هویت Manus مجاز ساخته می‌شود. نام‌کاربری ۳ تا ۳۲ نویسهٔ لاتین/عدد و رمز حداقل ۱۲ نویسه باشد.</p>
+        <p>حساب مالک مستقل از Manus فقط یک‌بار ساخته می‌شود. نام‌کاربری ۳ تا ۳۲ نویسهٔ لاتین/عدد و رمز حداقل ۱۲ نویسه باشد.</p>
         <form onSubmit={event => void submitBootstrap(event)}>
           <div className="form-field"><label htmlFor="owner-bootstrap-username">نام‌کاربری مالک</label><input id="owner-bootstrap-username" value={username} onChange={event => setUsername(event.target.value)} minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" autoComplete="username" required /></div>
           <div className="form-field"><label htmlFor="owner-bootstrap-password">رمز مالک</label><input id="owner-bootstrap-password" type="password" value={newPassword} onChange={event => setNewPassword(event.target.value)} minLength={12} maxLength={128} autoComplete="new-password" required /></div>
           <div className="form-field"><label htmlFor="owner-bootstrap-confirm">تکرار رمز مالک</label><input id="owner-bootstrap-confirm" type="password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} minLength={12} maxLength={128} autoComplete="new-password" required /></div>
           <button className="button-primary" type="submit" disabled={bootstrap.isPending}><ShieldCheck size={15} />ساخت حساب امن مالک</button>
         </form>
-      </> : status.setupRequired ? <>
-        <h2><ShieldAlert size={18} style={{ verticalAlign: "middle", marginLeft: 8 }} />راه‌اندازی مالک لازم است</h2>
-        <p>حساب مالک هنوز ساخته نشده است. برای آغاز راه‌اندازی، با حساب Manus مالک مجاز وارد شوید.</p>
-        <button className="button-primary" type="button" onClick={() => void beginOwnerOAuth()}><LogIn size={15} />{auth.user ? "تعویض حساب Manus مالک" : "ورود Manus برای راه‌اندازی"}</button>
       </> : <>
         <h2><KeyRound size={18} style={{ verticalAlign: "middle", marginLeft: 8 }} />ورود مدیر</h2>
         <p>نام‌کاربری و رمز اختصاصی پنل را وارد کنید. نام‌کاربری ۳ تا ۳۲ نویسهٔ لاتین/عدد و رمز حداقل ۱۲ نویسه است؛ این اطلاعات از ورود عمومی سایت جداست.</p>
@@ -120,11 +96,6 @@ export default function AdminAuthGate({ status }: { status: AdminAuthStatus }) {
           <div className="form-field"><label htmlFor="admin-login-password">رمز عبور</label><input id="admin-login-password" type="password" value={password} onChange={event => setPassword(event.target.value)} maxLength={128} autoComplete="current-password" required /></div>
           <button className="button-primary" type="submit" disabled={login.isPending}><LogIn size={15} />ورود امن</button>
         </form>
-        <div className="admin-auth-divider" />
-        <p className="form-hint">مالک می‌تواند در صورت فراموشی رمز، با حساب Manus مالک بازیابی اضطراری انجام دهد.</p>
-        {status.recoveryAvailable
-          ? <button className="button-secondary" type="button" onClick={() => void recoverOwner()} disabled={recovery.isPending}><ShieldCheck size={15} />بازیابی اضطراری مالک</button>
-          : <button className="button-secondary" type="button" onClick={() => void beginOwnerOAuth()}><LogIn size={15} />ورود Manus برای بازیابی مالک</button>}
       </>}
       {status.account && <div className="admin-auth-actions"><button className="button-secondary" type="button" onClick={() => void signOutAdmin()} disabled={logout.isPending}>خروج از پنل</button></div>}
     </section>

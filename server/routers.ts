@@ -6,7 +6,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { systemRouter } from "./_core/systemRouter";
 import { adminSectionProcedure, adminSessionProcedure, ownerProcedure, publicProcedure, router } from "./_core/trpc";
-import { isBootstrapOwnerCandidate, isSiteAdmin } from "./admin";
+import { isSiteAdmin } from "./admin";
 import { ADMIN_LOGIN_ADDRESS_ATTEMPT_LIMIT, ADMIN_LOGIN_ATTEMPT_LIMIT, ADMIN_LOGIN_WINDOW_MS, clearAdminSession, getAdminRequestAddress, hashAdminPassword, issueAdminSession, makeAdminLoginBucketHashes, normalizeAdminUsername, verifyAdminPassword, verifyAdminPasswordOrDummy } from "./admin-auth";
 import * as db from "./db";
 import { NO_ADMIN_PERMISSIONS } from "../shared/admin-permissions";
@@ -125,8 +125,8 @@ export const appRouter = router({
       const session = ctx.adminSession;
       return {
         setupRequired: !owner,
-        bootstrapAvailable: !owner && isBootstrapOwnerCandidate(ctx.user),
-        recoveryAvailable: Boolean(owner && ctx.user && ctx.user.openId === owner.ownerOpenId),
+        bootstrapAvailable: !owner,
+        recoveryAvailable: false,
         account: session ? {
           id: session.id,
           username: session.username,
@@ -155,15 +155,12 @@ export const appRouter = router({
       return { success: true } as const;
     }),
     bootstrapOwner: publicProcedure.input(z.object({ username: adminUsernameInput, password: adminPasswordInput })).mutation(async ({ input, ctx }) => {
-      if (!ctx.user || !isBootstrapOwnerCandidate(ctx.user)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "راه‌اندازی اولیه فقط با حساب Manus مالک مجاز است." });
-      }
       if (await db.getOwnerAdminAccount()) throw new TRPCError({ code: "CONFLICT", message: "حساب مالک قبلاً راه‌اندازی شده است." });
       const now = new Date();
       const id = await db.createOwnerAdminAccount({
         username: normalizeAdminUsername(input.username),
         passwordHash: await hashAdminPassword(input.password),
-        ownerOpenId: ctx.user.openId,
+        ownerOpenId: null,
         now,
       });
       if (!id) throw new TRPCError({ code: "CONFLICT", message: "حساب مالک قبلاً راه‌اندازی شده است." });
@@ -171,12 +168,7 @@ export const appRouter = router({
       return { success: true } as const;
     }),
     recoverOwner: publicProcedure.mutation(async ({ ctx }) => {
-      const owner = await db.getOwnerAdminAccount();
-      if (!owner || !ctx.user || ctx.user.openId !== owner.ownerOpenId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "بازیابی فقط با حساب Manus مالک مجاز است." });
-      }
-      await issueAdminSession(owner.id, ctx.req, ctx.res, { recovery: true });
-      return { success: true } as const;
+      throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "بازیابی Manus غیرفعال است؛ از رمز پنل استفاده کنید." });
     }),
     logout: publicProcedure.mutation(async ({ ctx }) => {
       await clearAdminSession(ctx.req, ctx.res);

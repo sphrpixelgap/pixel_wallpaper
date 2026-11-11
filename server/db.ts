@@ -780,7 +780,7 @@ export async function getOwnerAdminByOpenId(openId: string): Promise<AdminAccoun
   return (await database.select().from(adminAccounts).where(and(eq(adminAccounts.ownerSlot, 1), eq(adminAccounts.ownerOpenId, openId))).limit(1))[0];
 }
 
-export async function createOwnerAdminAccount(input: { username: string; passwordHash: string; ownerOpenId: string; now: Date }): Promise<number | null> {
+export async function createOwnerAdminAccount(input: { username: string; passwordHash: string; ownerOpenId?: string | null; now: Date }): Promise<number | null> {
   const database = await getDb();
   if (!database) throw new Error("Database is not available");
   try {
