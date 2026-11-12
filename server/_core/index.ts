@@ -59,8 +59,19 @@ function sendDownloadFailure(res: Response, message: string, error?: unknown) {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.disable("x-powered-by");
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    if (process.env.NODE_ENV === "production") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000");
+    }
+    next();
+  });
+  app.use(express.json({ limit: "2mb" }));
+  app.use(express.urlencoded({ limit: "128kb", extended: true }));
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
   app.get("/robots.txt", (_req, res) => {
     res.set("Cache-Control", "public, max-age=300").set("Content-Type", "text/plain; charset=utf-8").send(buildRobotsTxt());

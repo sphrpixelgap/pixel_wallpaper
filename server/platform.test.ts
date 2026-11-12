@@ -28,15 +28,15 @@ describe("current platform integration", () => {
   });
   it("persists URL-only image results through current managed storage", async () => {
     vi.stubEnv("MANUS_API_URL", "https://api.example"); vi.stubEnv("MANUS_API_KEY", "test-only");
+    vi.stubEnv("IMAGEKIT_URL_ENDPOINT", "https://ik.imagekit.io/xwqxnxqle"); vi.stubEnv("IMAGEKIT_PRIVATE_KEY", "test-only");
     const request = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ image: { url: "https://image.example/result.png", mimeType: "image/png" } })))
       .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ url: "https://upload.example/object" })))
-      .mockResolvedValueOnce(new Response(""));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ url: "https://ik.imagekit.io/xwqxnxqle/generated/test.png" })));
     vi.stubGlobal("fetch", request);
     const image = await generateImage({ prompt: "test", originalImages: [] });
-    expect(image.url).toMatch(/^\/manus-storage\/generated\//);
-    expect(request).toHaveBeenCalledTimes(4);
+    expect(image.url).toBe("https://ik.imagekit.io/xwqxnxqle/generated/test.png");
+    expect(request).toHaveBeenCalledTimes(3);
     expect(JSON.parse(request.mock.calls[0][1].body)).toHaveProperty("originalImages");
   });
   it("uses a distinct secure app cookie behind the HTTPS Preview proxy", () => {

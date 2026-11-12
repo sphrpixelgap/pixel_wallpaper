@@ -82,6 +82,7 @@ export default function WallpaperDetail() {
 
   useEffect(() => { if (wallpaper) document.title = `${wallpaper.title} | پیکسل والپیپر`; return () => { document.title = "پیکسل والپیپر | والپیپر گیمینگ"; }; }, [wallpaper?.id, wallpaper?.title]);
   if (query.isLoading) return <main className="page-wrap"><div className="loading-line"><span className="spinner" /> در حال بارگذاری والپیپر...</div></main>;
+  if (query.isError && !query.data) return <main className="page-wrap" dir="rtl"><div className="empty-state" role="alert"><h3>بارگذاری والپیپر انجام نشد</h3><p>خطای ارتباط با گنجینه با نبودن تصویر فرق دارد؛ دوباره تلاش کن.</p><button className="button-secondary" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>تلاش دوباره</button></div></main>;
   if (!wallpaper || !selected) return <main className="page-wrap"><div className="page-header"><Link href="/" className="eyebrow"><ArrowRight size={15} /> بازگشت به گنجینه</Link></div><div className="empty-state"><h3>این والپیپر در دسترس نیست</h3><p>ممکن است تصویر حذف شده یا نشانی آن اشتباه باشد.</p><Link className="button-primary" href="/">بازگشت به صفحهٔ اصلی</Link></div></main>;
 
   const tags = (wallpaper.tags ?? "").split(",").map(tag => tag.trim()).filter(Boolean);

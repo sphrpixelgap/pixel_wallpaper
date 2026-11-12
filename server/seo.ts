@@ -1,6 +1,19 @@
 import { collections } from "../shared/collections";
 
-export const SITE_ORIGIN = "https://pixelwp-kngtqsrq.manus.space";
+const DEFAULT_SITE_ORIGIN = "https://xfthxfth.dpdns.org";
+const DEFAULT_IMAGEKIT_URL_ENDPOINT = "https://ik.imagekit.io/xwqxnxqle";
+
+function resolveSiteOrigin() {
+  const raw = process.env.SITE_ORIGIN?.trim() || DEFAULT_SITE_ORIGIN;
+  const url = new URL(raw);
+  const isLocalHttp = url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  if ((url.protocol !== "https:" && !isLocalHttp) || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+    throw new Error("SITE_ORIGIN must be an HTTPS origin without a path, query, or fragment.");
+  }
+  return url.origin;
+}
+
+export const SITE_ORIGIN = resolveSiteOrigin();
 const SITEMAP_NAMESPACE = "http://www.sitemaps.org/schemas/sitemap/0.9";
 const IMAGE_NAMESPACE = "http://www.google.com/schemas/sitemap-image/1.1";
 
@@ -16,15 +29,42 @@ export type SitemapWallpaper = {
 type SitemapLocation = { path: string; lastmod?: string; imageUrl?: string; imageTitle?: string };
 
 function escapeXml(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&apos;");
+  const validXmlValue = Array.from(value).filter(character => {
+    const codePoint = character.codePointAt(0)!;
+    return codePoint === 0x9 || codePoint === 0xa || codePoint === 0xd ||
+      (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+      (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+      (codePoint >= 0x10000 && codePoint <= 0x10ffff);
+  }).join("");
+  return validXmlValue.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+function getImageKitEndpoint() {
+  try {
+    const endpoint = new URL(process.env.IMAGEKIT_URL_ENDPOINT?.trim() || DEFAULT_IMAGEKIT_URL_ENDPOINT);
+    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) return undefined;
+    endpoint.pathname = endpoint.pathname.replace(/\/+$/, "") || "/";
+    if (endpoint.hostname === "ik.imagekit.io" && endpoint.pathname === "/") return undefined;
+    return endpoint;
+  } catch {
+    return undefined;
+  }
 }
 
 export function getPublicImageUrl(value: string | null | undefined) {
   if (!value) return undefined;
   try {
     const url = new URL(value, SITE_ORIGIN);
-    if (url.origin !== SITE_ORIGIN || !url.pathname.startsWith("/manus-storage/") || url.search || url.hash || url.pathname.split("/").includes("..")) return undefined;
-    return url.toString();
+    if (url.username || url.password || url.search || url.hash || url.pathname.split("/").includes("..")) return undefined;
+
+    const isSiteStorage = url.origin === SITE_ORIGIN && url.pathname.startsWith("/manus-storage/");
+    const imageKitEndpoint = getImageKitEndpoint();
+    const endpointPath = imageKitEndpoint?.pathname.replace(/\/+$/, "") || "";
+    const isImageKitStorage = Boolean(
+      imageKitEndpoint && url.origin === imageKitEndpoint.origin &&
+      (!endpointPath || url.pathname === endpointPath || url.pathname.startsWith(`${endpointPath}/`))
+    );
+    return isSiteStorage || isImageKitStorage ? url.toString() : undefined;
   } catch {
     return undefined;
   }
