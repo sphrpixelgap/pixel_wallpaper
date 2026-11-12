@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Download, Heart, Info, Maximize2, Minimize2 } from "lucide-react";
 import { Link } from "wouter";
 import type { Wallpaper } from "@/lib/trpc";
-import { formatBytes, ratioLabel, slugifyGame, toggleFavorite, useFavorites } from "@/lib/wallpaper";
+import { formatBytes, slugifyGame, toggleFavorite, useFavorites } from "@/lib/wallpaper";
 
 export default function WallpaperCard({ wallpaper, compact = false, presentation = "default", showActions = true, priority = false }: { wallpaper: Wallpaper; compact?: boolean; presentation?: "default" | "gallery"; showActions?: boolean; priority?: boolean }) {
   const favorites = useFavorites();
@@ -23,9 +23,8 @@ export default function WallpaperCard({ wallpaper, compact = false, presentation
         {isGallery && !imageLoaded && !imageFailed && <span className="gallery-image-placeholder" aria-hidden="true"><span /></span>}
         {!imageFailed && <img className={`wallpaper-image ${imageLoaded ? "is-loaded" : ""}`} src={imageUrl} alt={wallpaper.title} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" onLoad={isGallery ? () => setImageLoaded(true) : undefined} onError={isGallery ? () => setImageFailed(true) : undefined} />}
         {isGallery && imageFailed && <span className="gallery-image-fallback" role="img" aria-label={`پیش‌نمایش «${wallpaper.title}» بارگذاری نشد`}><Info size={18} /><span>پیش‌نمایش در دسترس نیست</span></span>}
-        {isGallery && <span className={`gallery-info-overlay ${showGalleryInfo ? "is-visible" : ""}`} aria-hidden="true"><strong>{wallpaper.title}</strong><span>{wallpaper.gameTitle || wallpaper.category}</span><small>{wallpaper.resolution}</small></span>}
+        {isGallery && <span className={`gallery-info-overlay ${showGalleryInfo ? "is-visible" : ""}`} aria-hidden="true"><strong>{wallpaper.title}</strong><span>{wallpaper.gameTitle || wallpaper.category}</span></span>}
         {!isGallery && showActions && <span className="image-overlay"><span>مشاهده</span></span>}
-        {!isGallery && showActions && <span className="image-ratio"><Maximize2 size={12} /> {ratioLabel(wallpaper.width, wallpaper.height)}</span>}
       </Link>
       {showActions && <button className={`favorite-toggle ${isFavorite ? "is-favorite" : ""}`} onClick={() => toggleFavorite(wallpaper.id)} aria-label={isFavorite ? "حذف از علاقه‌مندی‌ها" : "افزودن به علاقه‌مندی‌ها"} aria-pressed={isFavorite}><Heart size={17} fill={isFavorite ? "currentColor" : "none"} /></button>}
       {isGallery && showActions && <>
@@ -42,7 +41,7 @@ export default function WallpaperCard({ wallpaper, compact = false, presentation
             {wallpaper.gameTitle && <Link href={`/games/${slugifyGame(wallpaper.gameTitle)}`} className="game-mini-link">{wallpaper.gameTitle}</Link>}
           </>}
         </div>
-        {!isGallery && <div className="wallpaper-meta"><span><Maximize2 size={13} /> {wallpaper.resolution}</span><span><Download size={13} /> {wallpaper.downloadCount.toLocaleString("fa-IR")}</span>{wallpaper.fileSize > 0 && <span className="file-size-meta">{formatBytes(wallpaper.fileSize)}</span>}</div>}
+        {!isGallery && <div className="wallpaper-meta"><span><Download size={13} /> {wallpaper.downloadCount.toLocaleString("fa-IR")}</span>{wallpaper.fileSize > 0 && <span className="file-size-meta">{formatBytes(wallpaper.fileSize)}</span>}</div>}
       </div>
     </article>
   );
