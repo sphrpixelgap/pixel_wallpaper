@@ -3,6 +3,7 @@ import type { User } from "../drizzle/schema";
 /** Bootstrap is safe only for the explicitly configured owner, or the sole configured admin email. */
 export function isBootstrapOwnerCandidate(user: Pick<User, "role" | "email" | "openId"> | null | undefined): boolean {
   if (!user) return false;
+  if (user.role === "blocked") return false;
   const ownerOpenId = process.env.OWNER_OPEN_ID?.trim();
   if (ownerOpenId) return user.openId === ownerOpenId;
   const allowedEmails = (process.env.ADMIN_EMAILS ?? "")

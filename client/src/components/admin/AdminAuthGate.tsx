@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { ArrowLeft, KeyRound, LogIn, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Link } from "wouter";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
+import { startLogin } from "@/const";
 
 type AdminAuthStatus = RouterOutputs["adminAuth"]["status"];
 
@@ -63,14 +64,19 @@ export default function AdminAuthGate({ status }: { status: AdminAuthStatus }) {
   }
 
   const isChangingPassword = Boolean(status.account?.mustChangePassword);
+  const isBootstrapBlocked = status.setupRequired && !status.bootstrapAvailable;
   const isBootstrapping = status.setupRequired && status.bootstrapAvailable;
   return <main className="page-wrap admin-auth-page" dir="rtl">
-    <header className="page-header"><span className="eyebrow"><ShieldAlert size={14} /> دسترسی مدیریت</span><h1>{isChangingPassword ? "تغییر رمز اولیه" : isBootstrapping ? "راه‌اندازی حساب مالک" : "ورود به پنل مدیران"}</h1><p>ورود این بخش مستقل از ورود کاربران عادی سایت است.</p></header>
+    <header className="page-header"><span className="eyebrow"><ShieldAlert size={14} /> دسترسی مدیریت</span><h1>{isBootstrapBlocked ? "راه‌اندازی امن مالک نیازمند تأیید هویت است" : isChangingPassword ? "تغییر رمز اولیه" : isBootstrapping ? "راه‌اندازی حساب مالک" : "ورود به پنل مدیران"}</h1><p>ورود این بخش مستقل از ورود کاربران عادی سایت است.</p></header>
     <section className="admin-auth-card">
       {error && <div className="notice-box" role="alert">{error}</div>}
       {success && <p className="success-text" role="status">{success}</p>}
 
-      {isChangingPassword ? <>
+      {isBootstrapBlocked ? <>
+        <h2><ShieldAlert size={18} style={{ verticalAlign: "middle", marginLeft: 8 }} />ساخت مالک ناشناس مسدود است</h2>
+        <p>برای راه‌اندازی، در Railway مقدار <code>OWNER_OPEN_ID</code> را برای هویت مالک تعیین کن؛ یا فقط یک ایمیل مجاز در <code>ADMIN_EMAILS</code> قرار بده. سپس با همان حساب OAuth وارد شو. تا زمان ثبت هویت مجاز، ساخت مالک عمداً غیرفعال می‌ماند.</p>
+        <button className="button-secondary" type="button" onClick={() => { setError(""); try { startLogin({ returnTo: "admin" }); } catch { setError("ورود OAuth آماده نیست؛ ابتدا تنظیمات احراز هویت سایت را بررسی کن."); } }}><LogIn size={15} /> ورود با حساب OAuth مجاز</button>
+      </> : isChangingPassword ? <>
         <h2><KeyRound size={18} style={{ verticalAlign: "middle", marginLeft: 8 }} />تغییر اجباری رمز</h2>
         <p>برای ادامهٔ کار، رمز اولیهٔ این حساب مدیر را به رمز شخصی جدید تغییر دهید.</p>
         <form onSubmit={event => void submitPasswordChange(event)}>

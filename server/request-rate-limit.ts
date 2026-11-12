@@ -9,6 +9,8 @@ export const WALLPAPER_VIEW_WINDOW_MS = 60_000;
 export const WALLPAPER_VIEW_LIMIT = 120;
 export const WALLPAPER_REPORT_WINDOW_MS = 60 * 60_000;
 export const WALLPAPER_REPORT_LIMIT = 5;
+export const WALLPAPER_DOWNLOAD_WINDOW_MS = 5 * 60_000;
+export const WALLPAPER_DOWNLOAD_LIMIT = 60;
 export const CLIENT_RATE_LIMIT_RETENTION_MS = 30 * 24 * 60 * 60_000;
 
 export type RequestCreationThrottleRecord = {
@@ -25,6 +27,11 @@ export type RequestCreationThrottleStatus =
 
 export function hashClientAddress(address: string, secret: string) {
   return createHmac("sha256", secret).update(address).digest("hex");
+}
+
+export function hashWallpaperDownloadAddress(address: string, secret: string) {
+  if (!secret) throw new Error("A stable server secret is required for download rate limits.");
+  return createHmac("sha256", secret).update(`wallpaper-download:${address}`).digest("hex");
 }
 
 export function getRequestCreationThrottleStatus(

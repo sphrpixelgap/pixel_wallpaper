@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getRequestCreationThrottleStatus,
   hashClientAddress,
+  hashWallpaperDownloadAddress,
   planFixedWindowAttempt,
   REQUEST_AI_CHECK_COOLDOWN_MS,
   REQUEST_LOOKUP_LIMIT,
@@ -9,6 +10,8 @@ import {
   REQUEST_SUBMISSION_COOLDOWN_MS,
   WALLPAPER_REPORT_LIMIT,
   WALLPAPER_REPORT_WINDOW_MS,
+  WALLPAPER_DOWNLOAD_LIMIT,
+  WALLPAPER_DOWNLOAD_WINDOW_MS,
   WALLPAPER_VIEW_LIMIT,
   WALLPAPER_VIEW_WINDOW_MS,
 } from "./request-rate-limit";
@@ -79,5 +82,15 @@ describe("shared request throttling policy", () => {
     expect(hashClientAddress("203.0.113.4", "private-project-secret")).toBe(first);
     expect(hashClientAddress("203.0.113.4", "different-secret")).not.toBe(first);
     expect(first).not.toContain("203.0.113.4");
+  });
+
+  it("uses a separate opaque fixed-window bucket for wallpaper downloads", () => {
+    const first = hashWallpaperDownloadAddress("203.0.113.4", "private-project-secret");
+    expect(first).toMatch(/^[a-f0-9]{64}$/);
+    expect(first).not.toContain("203.0.113.4");
+    expect(first).not.toBe(hashClientAddress("203.0.113.4", "private-project-secret"));
+    expect(WALLPAPER_DOWNLOAD_WINDOW_MS).toBe(5 * 60_000);
+    expect(WALLPAPER_DOWNLOAD_LIMIT).toBe(60);
+    expect(planFixedWindowAttempt(offset(1_000), WALLPAPER_DOWNLOAD_LIMIT, now, WALLPAPER_DOWNLOAD_WINDOW_MS, WALLPAPER_DOWNLOAD_LIMIT).allowed).toBe(false);
   });
 });

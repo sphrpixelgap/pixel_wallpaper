@@ -5,6 +5,7 @@ import {
   ADMIN_LOGIN_ATTEMPT_LIMIT,
   ADMIN_LOGIN_WINDOW_MS,
   ADMIN_SESSION_COOKIE,
+  getAdminRequestAddress,
   hashAdminPassword,
   hashAdminSessionToken,
   makeAdminLoginBucketHashes,
@@ -65,6 +66,12 @@ describe("administrator credential primitives", () => {
 describe("owner bootstrap policy", () => {
   const user = { role: "admin" as const, email: "owner@example.com", openId: "owner-open-id" };
 
+  it("denies first-owner bootstrap when no explicit identity allowlist exists", () => {
+    vi.stubEnv("OWNER_OPEN_ID", "");
+    vi.stubEnv("ADMIN_EMAILS", "");
+    expect(isBootstrapOwnerCandidate(user)).toBe(false);
+  });
+
   it("allows bootstrap with the sole configured admin email only", () => {
     vi.stubEnv("OWNER_OPEN_ID", "");
     vi.stubEnv("ADMIN_EMAILS", "owner@example.com");
@@ -73,14 +80,39 @@ describe("owner bootstrap policy", () => {
     expect(isBootstrapOwnerCandidate(user)).toBe(false);
   });
 
-  it("prefers the explicit owner identity and permits the configured owner to recover a blocked site account", () => {
+  it("prefers the explicit owner identity and treats a blocked role as a hard deny", () => {
     vi.stubEnv("OWNER_OPEN_ID", "owner-open-id");
     vi.stubEnv("ADMIN_EMAILS", "other@example.com");
     expect(isBootstrapOwnerCandidate(user)).toBe(true);
     expect(isBootstrapOwnerCandidate({ ...user, openId: "another-id" })).toBe(false);
-    expect(isBootstrapOwnerCandidate({ ...user, role: "blocked" })).toBe(true);
+    expect(isBootstrapOwnerCandidate({ ...user, role: "blocked" })).toBe(false);
     vi.stubEnv("OWNER_OPEN_ID", "");
     vi.stubEnv("ADMIN_EMAILS", "owner@example.com");
-    expect(isBootstrapOwnerCandidate({ ...user, role: "blocked" })).toBe(true);
+    expect(isBootstrapOwnerCandidate({ ...user, role: "blocked" })).toBe(false);
+  });
+});
+
+describe("request client address", () => {
+  it("uses a valid Cloudflare client IP only with a Cloudflare Ray header", () => {
+    const request = {
+      get: (name: string) => name.toLowerCase() === "cf-connecting-ip" ? "203.0.113.8" : name.toLowerCase() === "cf-ray" ? "a1b2c3d4e5f60789-SJC" : undefined,
+      ip: "10.0.0.1",
+      socket: { remoteAddress: "10.0.0.2" },
+    } as unknown as Parameters<typeof getAdminRequestAddress>[0];
+    expect(getAdminRequestAddress(request)).toBe("203.0.113.8");
+
+    const missingRayRequest = {
+      get: (name: string) => name.toLowerCase() === "cf-connecting-ip" ? "203.0.113.8" : undefined,
+      ip: "10.0.0.1",
+      socket: { remoteAddress: "10.0.0.2" },
+    } as unknown as Parameters<typeof getAdminRequestAddress>[0];
+    expect(getAdminRequestAddress(missingRayRequest)).toBe("10.0.0.1");
+
+    const invalidRequest = {
+      get: (name: string) => name.toLowerCase() === "cf-connecting-ip" ? "not-an-ip" : name.toLowerCase() === "cf-ray" ? "a1b2c3d4e5f60789-SJC" : undefined,
+      ip: "10.0.0.1",
+      socket: { remoteAddress: "10.0.0.2" },
+    } as unknown as Parameters<typeof getAdminRequestAddress>[0];
+    expect(getAdminRequestAddress(invalidRequest)).toBe("10.0.0.1");
   });
 });

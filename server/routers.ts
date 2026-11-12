@@ -5,16 +5,16 @@ import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { systemRouter } from "./_core/systemRouter";
-import { adminSectionProcedure, adminSessionProcedure, ownerProcedure, publicProcedure, router } from "./_core/trpc";
-import { isSiteAdmin } from "./admin";
+import { adminSectionProcedure, adminSessionProcedure, ownerProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { isBootstrapOwnerCandidate, isSiteAdmin } from "./admin";
 import { ADMIN_LOGIN_ADDRESS_ATTEMPT_LIMIT, ADMIN_LOGIN_ATTEMPT_LIMIT, ADMIN_LOGIN_WINDOW_MS, clearAdminSession, getAdminRequestAddress, hashAdminPassword, issueAdminSession, makeAdminLoginBucketHashes, normalizeAdminUsername, verifyAdminPassword, verifyAdminPasswordOrDummy } from "./admin-auth";
 import * as db from "./db";
 import { NO_ADMIN_PERMISSIONS } from "../shared/admin-permissions";
 import { checkWallpaperRequestDuplicates, getRequestDuplicatePolicy } from "./request-duplicate-check";
 import { hashClientAddress } from "./request-rate-limit";
 
-function requestClientHash(request: { ip?: string; socket: { remoteAddress?: string | null } }) {
-  const address = request.ip || request.socket.remoteAddress || "unknown";
+function requestClientHash(request: Parameters<typeof getAdminRequestAddress>[0]) {
+  const address = getAdminRequestAddress(request);
   const secret = ENV.cookieSecret || process.env.DATABASE_URL || "pixelwp-client-rate-limit-v1";
   return hashClientAddress(address, secret);
 }
@@ -125,7 +125,7 @@ export const appRouter = router({
       const session = ctx.adminSession;
       return {
         setupRequired: !owner,
-        bootstrapAvailable: !owner,
+        bootstrapAvailable: !owner && isBootstrapOwnerCandidate(ctx.user),
         recoveryAvailable: false,
         account: session ? {
           id: session.id,
@@ -154,13 +154,14 @@ export const appRouter = router({
       await issueAdminSession(account.id, ctx.req, ctx.res);
       return { success: true } as const;
     }),
-    bootstrapOwner: publicProcedure.input(z.object({ username: adminUsernameInput, password: adminPasswordInput })).mutation(async ({ input, ctx }) => {
+    bootstrapOwner: protectedProcedure.input(z.object({ username: adminUsernameInput, password: adminPasswordInput })).mutation(async ({ input, ctx }) => {
+      if (!isBootstrapOwnerCandidate(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "راه‌اندازی مالک فقط برای هویت OAuth از پیش مجاز امکان‌پذیر است." });
       if (await db.getOwnerAdminAccount()) throw new TRPCError({ code: "CONFLICT", message: "حساب مالک قبلاً راه‌اندازی شده است." });
       const now = new Date();
       const id = await db.createOwnerAdminAccount({
         username: normalizeAdminUsername(input.username),
         passwordHash: await hashAdminPassword(input.password),
-        ownerOpenId: null,
+        ownerOpenId: ctx.user.openId,
         now,
       });
       if (!id) throw new TRPCError({ code: "CONFLICT", message: "حساب مالک قبلاً راه‌اندازی شده است." });
@@ -374,10 +375,6 @@ export const appRouter = router({
         throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "ثبت بازدید بیش از حد مجاز است." });
       }
       await db.recordWallpaperView(input.id);
-      return { success: true };
-    }),
-    recordDownload: publicProcedure.input(z.object({ id: z.number().int().positive(), variantId: z.number().int().positive().optional() })).mutation(async ({ input }) => {
-      await db.recordWallpaperDownload(input.id, input.variantId);
       return { success: true };
     }),
   }),

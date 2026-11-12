@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import { parse as parseCookieHeader } from "cookie";
 import type { Request, Response } from "express";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -73,7 +74,11 @@ export function makeAdminLoginBucketHashes(username: string, address: string, se
   return [hmac(`username:${normalizedUsername}`), hmac(`address:${address || "unknown"}`)];
 }
 
+/** Trust Cloudflare's client IP only while the Railway-generated public domain stays disabled. */
 export function getAdminRequestAddress(req: Request): string {
+  const cloudflareRay = req.get("cf-ray")?.trim();
+  const cloudflareAddress = req.get("cf-connecting-ip")?.trim();
+  if (cloudflareRay && cloudflareAddress && isIP(cloudflareAddress)) return cloudflareAddress;
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 

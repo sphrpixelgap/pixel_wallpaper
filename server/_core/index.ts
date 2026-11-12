@@ -2,17 +2,20 @@ import "dotenv/config";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { createServer } from "http";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { publicPlatformScript } from "./publicConfig";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { getAdminSessionFromRequest } from "../admin-auth";
+import { getAdminRequestAddress, getAdminSessionFromRequest } from "../admin-auth";
 import { hasAdminPermission } from "../../shared/admin-permissions";
-import { getSitemapWallpapers, getWallpaperDownloadTarget, recordWallpaperDownload } from "../db";
-import { storageGetSignedUrl, storagePut } from "../storage";
+import { consumeRateLimitBuckets, getSitemapWallpapers, getWallpaperDownloadTarget, recordWallpaperDownload } from "../db";
+import { hashWallpaperDownloadAddress, WALLPAPER_DOWNLOAD_LIMIT, WALLPAPER_DOWNLOAD_WINDOW_MS } from "../request-rate-limit";
+import { storageFetch, storagePut } from "../storage";
 import { serveStatic, setupVite } from "./vite";
 import { buildRobotsTxt, buildSitemapXml } from "../seo";
+import { ENV } from "./env";
 
 const MAX_WALLPAPER_BYTES = 12 * 1024 * 1024;
 
@@ -126,14 +129,32 @@ async function startServer() {
     }
 
     try {
+      const rateLimitSecret = ENV.cookieSecret || ENV.databaseUrl;
+      if (!rateLimitSecret) {
+        res.set("Cache-Control", "no-store").status(503).send("محدودکنندهٔ دانلود موقتاً در دسترس نیست.");
+        return;
+      }
+      let allowed: boolean;
+      try {
+        const hash = hashWallpaperDownloadAddress(getAdminRequestAddress(req), rateLimitSecret);
+        allowed = await consumeRateLimitBuckets([{ hash, limit: WALLPAPER_DOWNLOAD_LIMIT }], new Date(), WALLPAPER_DOWNLOAD_WINDOW_MS);
+      } catch (error) {
+        console.error("[Wallpaper download] Rate limiter unavailable", error instanceof Error ? error.name : "UnknownError");
+        res.set("Cache-Control", "no-store").status(503).send("محدودکنندهٔ دانلود موقتاً در دسترس نیست.");
+        return;
+      }
+      if (!allowed) {
+        res.set("Retry-After", String(Math.ceil(WALLPAPER_DOWNLOAD_WINDOW_MS / 1000))).set("Cache-Control", "no-store").status(429).send("تعداد دانلودها زیاد است؛ چند دقیقهٔ دیگر دوباره تلاش کنید.");
+        return;
+      }
+
       const target = await getWallpaperDownloadTarget(wallpaperId, variantId);
       if (!target) {
         res.status(404).send("والپیپر یا نسخهٔ انتخاب‌شده پیدا نشد.");
         return;
       }
 
-      const signedUrl = await storageGetSignedUrl(target.imageKey);
-      const upstream = await fetch(signedUrl, { redirect: "follow" });
+      const upstream = await storageFetch(target.imageKey);
       if (!upstream.ok || !upstream.body) {
         await upstream.body?.cancel().catch(() => undefined);
         res.status(502).send("دریافت فایل از فضای ذخیره‌سازی انجام نشد.");
@@ -149,15 +170,9 @@ async function startServer() {
       res.set("Cache-Control", "private, no-store").set("X-Content-Type-Options", "nosniff");
       res.attachment(filename);
       res.type(mime);
-      await recordWallpaperDownload(wallpaperId, variantId).catch(() => undefined);
-
       const fileStream = Readable.fromWeb(upstream.body as any);
-      fileStream.on("error", error => {
-        console.error("[Wallpaper download] stream failed", error instanceof Error ? error.name : "unknown");
-        sendDownloadFailure(res, "ارسال فایل دانلودی انجام نشد.", error);
-      });
-      res.on("close", () => { if (!res.writableEnded) fileStream.destroy(); });
-      fileStream.pipe(res);
+      await pipeline(fileStream, res);
+      await recordWallpaperDownload(wallpaperId, variantId).catch(() => undefined);
     } catch (error) {
       console.error("[Wallpaper download] failed", error instanceof Error ? error.name : "unknown");
       sendDownloadFailure(res, "دانلود فایل انجام نشد؛ لطفاً دوباره تلاش کنید.", error);

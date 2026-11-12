@@ -915,7 +915,7 @@ export async function clearAdminLoginLimits(bucketHashes: string[]): Promise<voi
   await database.delete(adminAuthLimits).where(inArray(adminAuthLimits.bucketHash, bucketHashes));
 }
 
-export async function consumeAdminLoginLimits(bucketLimits: Array<{ hash: string; limit: number }>, now: Date, windowMs: number): Promise<boolean> {
+export async function consumeRateLimitBuckets(bucketLimits: Array<{ hash: string; limit: number }>, now: Date, windowMs: number): Promise<boolean> {
   const database = await getDb();
   if (!database) throw new Error("Database is not available");
   const limits = new Map(bucketLimits.filter(bucket => /^[a-f0-9]{64}$/.test(bucket.hash) && Number.isInteger(bucket.limit) && bucket.limit > 0).map(bucket => [bucket.hash, bucket.limit]));
@@ -940,6 +940,10 @@ export async function consumeAdminLoginLimits(bucketLimits: Array<{ hash: string
     await database.delete(adminAuthLimits).where(lt(adminAuthLimits.updatedAt, new Date(now.getTime() - 30 * 24 * 60 * 60_000)));
   }
   return allowed;
+}
+
+export async function consumeAdminLoginLimits(bucketLimits: Array<{ hash: string; limit: number }>, now: Date, windowMs: number): Promise<boolean> {
+  return consumeRateLimitBuckets(bucketLimits, now, windowMs);
 }
 
 export async function updateAdminLastLogin(accountId: number, now: Date): Promise<void> {
