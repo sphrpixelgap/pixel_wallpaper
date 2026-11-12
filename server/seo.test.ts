@@ -17,6 +17,7 @@ describe("SEO discovery documents", () => {
     expect(sitemap).toContain('xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"');
     expect(sitemap).toContain(`<loc>${SITE_ORIGIN}/</loc>`);
     expect(sitemap).toContain(`<loc>${SITE_ORIGIN}/request</loc>`);
+    expect(sitemap).toContain(`<loc>${SITE_ORIGIN}/submit-wallpaper</loc>`);
     expect(sitemap).toContain(`<loc>${SITE_ORIGIN}/collections</loc>`);
     for (const slug of ["action", "adventure", "cyberpunk", "mobile", "4k", "purple", "ultrawide"]) {
       expect(sitemap).toContain(`<loc>${SITE_ORIGIN}/collections/${slug}</loc>`);
@@ -30,7 +31,7 @@ describe("SEO discovery documents", () => {
     expect(sitemap).toContain("<image:title>بازی &lt;سایبر&gt; &amp; شب</image:title>");
     expect(sitemap).not.toContain("wallpapers/43.webp");
     expect(sitemap).not.toContain("\u0001");
-    expect(sitemap.match(/<url>/g)).toHaveLength(14);
+    expect(sitemap.match(/<url>/g)).toHaveLength(15);
     expect(sitemap).toContain("<lastmod>2026-11-04T10:20:30.000Z</lastmod>");
     expect(sitemap).not.toContain("/admin");
     expect(sitemap).not.toContain("/request/track");

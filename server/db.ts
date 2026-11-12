@@ -1,6 +1,6 @@
-import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, lte, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAccount, InsertAdminAccount, InsertUser, InsertWallpaper, InsertWallpaperVariant, InsertWallpaperRequest, User, adminAccounts, adminActivityLogs, adminAuthLimits, adminSessions, clientRequestLimits, users, wallpaperCategories, wallpaperIssueReports, wallpaperRequests, wallpaperVariants, wallpapers, siteSettings } from "../drizzle/schema";
+import { AdminAccount, InsertAdminAccount, InsertUser, InsertWallpaper, InsertWallpaperVariant, InsertWallpaperRequest, User, adminAccounts, adminActivityLogs, adminAuthLimits, adminSessions, clientRequestLimits, users, wallpaperCategories, wallpaperIssueReports, wallpaperRequests, wallpaperVariants, wallpapers, siteSettings, communityWallpaperSubmissions, imageKitCleanupJobs } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { redactWallpaperIssueDetails } from "./privacy";
 import { DEFAULT_SITE_SETTINGS, type SiteSettingsValues } from "../shared/site-settings";
@@ -26,6 +26,45 @@ export async function getDb() {
     catch (error) { console.warn("[Database] Failed to connect:", error); _db = null; }
   }
   return _db;
+}
+
+type Database = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+async function includeCommunitySubmissionMetadata<T extends { id: number }>(database: Database, items: T[]) {
+  if (!items.length) return items.map(item => ({ ...item, communitySubmission: null }));
+  const rows = await database.select().from(communityWallpaperSubmissions)
+    .where(inArray(communityWallpaperSubmissions.wallpaperId, items.map(item => item.id)));
+  const byWallpaperId = new Map(rows.map(row => [row.wallpaperId, row]));
+  return items.map(item => ({ ...item, communitySubmission: byWallpaperId.get(item.id) ?? null }));
+}
+
+export async function enqueueImageKitCleanup(fileIds: string[], now = new Date()) {
+  const uniqueIds = [...new Set(fileIds)];
+  if (!uniqueIds.length) return;
+  if (uniqueIds.some(fileId => !/^[A-Za-z0-9_-]{1,128}$/.test(fileId))) throw new Error("Invalid ImageKit cleanup file ID.");
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(imageKitCleanupJobs).values(uniqueIds.map(fileId => ({ fileId, nextAttemptAt: now })))
+    .onDuplicateKeyUpdate({ set: { nextAttemptAt: now } });
+}
+
+export async function listDueImageKitCleanupJobs(now = new Date(), limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(imageKitCleanupJobs).where(lte(imageKitCleanupJobs.nextAttemptAt, now))
+    .orderBy(asc(imageKitCleanupJobs.nextAttemptAt)).limit(Math.min(Math.max(Math.floor(limit), 1), 50));
+}
+
+export async function completeImageKitCleanupJob(fileId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.delete(imageKitCleanupJobs).where(eq(imageKitCleanupJobs.fileId, fileId));
+}
+
+export async function retryImageKitCleanupJob(fileId: string, nextAttemptAt: Date) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.update(imageKitCleanupJobs).set({ attempts: sql`${imageKitCleanupJobs.attempts} + 1`, nextAttemptAt })
+    .where(eq(imageKitCleanupJobs.fileId, fileId));
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -191,7 +230,8 @@ export async function listAdminWallpapers() {
     list.push({ id: variant.id, resolution: variant.resolution, targetDevice: variant.targetDevice, width: variant.width, height: variant.height, fileSize: variant.fileSize });
     extras.set(variant.wallpaperId, list);
   }
-  return items.map(item => { const extraVariants = extras.get(item.id) ?? []; return { ...item, extraVariants, extraVariantCount: extraVariants.length }; });
+  const enriched = await includeCommunitySubmissionMetadata(db, items);
+  return enriched.map(item => { const extraVariants = extras.get(item.id) ?? []; return { ...item, extraVariants, extraVariantCount: extraVariants.length }; });
 }
 
 export async function listAdminWallpapersPage(input: { page: number; pageSize: number; q?: string; category?: string; state?: "all" | "active" | "archived" | "pending" | "draft" | "published" }) {
@@ -222,7 +262,8 @@ export async function listAdminWallpapersPage(input: { page: number; pageSize: n
     list.push({ id: variant.id, resolution: variant.resolution, targetDevice: variant.targetDevice, width: variant.width, height: variant.height, fileSize: variant.fileSize });
     extras.set(variant.wallpaperId, list);
   }
-  return { items: items.map(item => { const extraVariants = extras.get(item.id) ?? []; return { ...item, extraVariants, extraVariantCount: extraVariants.length }; }), total: Number(totals[0]?.total ?? 0), activeCount: Number(activeTotals[0]?.total ?? 0) };
+  const enriched = await includeCommunitySubmissionMetadata(db, items);
+  return { items: enriched.map(item => { const extraVariants = extras.get(item.id) ?? []; return { ...item, extraVariants, extraVariantCount: extraVariants.length }; }), total: Number(totals[0]?.total ?? 0), activeCount: Number(activeTotals[0]?.total ?? 0) };
 }
 
 export async function getAdminOverview() {
@@ -269,9 +310,10 @@ export async function bulkUpdateWallpapers(ids: number[], operation: { type: "se
 export async function listPossibleWallpaperDuplicates() {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select({ id: wallpapers.id, title: wallpapers.title, gameTitle: wallpapers.gameTitle, category: wallpapers.category, width: wallpapers.width, height: wallpapers.height, fileSize: wallpapers.fileSize, thumbnailUrl: wallpapers.thumbnailUrl, imageUrl: wallpapers.imageUrl }).from(wallpapers).where(eq(wallpapers.isArchived, 0)).orderBy(desc(wallpapers.createdAt)).limit(5000);
-  const groups = new Map<string, typeof rows>();
-  for (const row of rows) {
+  const rows = await db.select({ id: wallpapers.id, title: wallpapers.title, gameTitle: wallpapers.gameTitle, category: wallpapers.category, width: wallpapers.width, height: wallpapers.height, fileSize: wallpapers.fileSize, imageKey: wallpapers.imageKey, imageUrl: wallpapers.imageUrl, thumbnailKey: wallpapers.thumbnailKey, thumbnailUrl: wallpapers.thumbnailUrl, publicationStatus: wallpapers.publicationStatus }).from(wallpapers).where(eq(wallpapers.isArchived, 0)).orderBy(desc(wallpapers.createdAt)).limit(5000);
+  const enrichedRows = await includeCommunitySubmissionMetadata(db, rows);
+  const groups = new Map<string, typeof enrichedRows>();
+  for (const row of enrichedRows) {
     const title = normalizeWallpaperTitleForDuplicateReview(row.title);
     if (!title || !row.width || !row.height) continue;
     const key = [normalizeSearch(row.gameTitle ?? ""), title, row.width, row.height, row.fileSize].join("|");
@@ -355,16 +397,62 @@ export async function createWallpaper(input: InsertWallpaper, variants: Omit<Ins
   return id;
 }
 
+export async function createCommunityWallpaper(input: InsertWallpaper, submission: {
+  privateImageFileId: string;
+  privateThumbnailFileId: string;
+  sourceUrl: string | null;
+  rightsConfirmedAt: Date;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.transaction(async tx => {
+    const result = await tx.insert(wallpapers).values({ ...input, publicationStatus: "pending" });
+    const id = Number(result[0].insertId);
+    await tx.insert(communityWallpaperSubmissions).values({ ...submission, wallpaperId: id });
+    return id;
+  });
+}
+
 export async function updateWallpaper(
   id: number,
-  input: Partial<Omit<InsertWallpaper, "id" | "createdAt">>,
+  input: Partial<Omit<InsertWallpaper, "id" | "createdAt">> & { imageFileId?: string | null; thumbnailFileId?: string | null },
   variants: Omit<InsertWallpaperVariant, "wallpaperId">[] = [],
   replaceVariants = false,
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
-  await db.transaction(async tx => {
-    await tx.update(wallpapers).set(input).where(eq(wallpapers.id, id));
+  return db.transaction(async tx => {
+    const [before] = await tx.select({ imageKey: wallpapers.imageKey, imageFileId: wallpapers.imageFileId, thumbnailKey: wallpapers.thumbnailKey, thumbnailFileId: wallpapers.thumbnailFileId })
+      .from(wallpapers).where(eq(wallpapers.id, id)).limit(1);
+    const detachedFileIds: string[] = [];
+    const [submission] = await tx.select({
+      privateImageFileId: communityWallpaperSubmissions.privateImageFileId,
+      privateThumbnailFileId: communityWallpaperSubmissions.privateThumbnailFileId,
+      publicImageFileId: communityWallpaperSubmissions.publicImageFileId,
+      publicThumbnailFileId: communityWallpaperSubmissions.publicThumbnailFileId,
+    }).from(communityWallpaperSubmissions).where(eq(communityWallpaperSubmissions.wallpaperId, id)).limit(1);
+    const replaceImage = Boolean(input.imageKey !== undefined && input.imageKey !== before?.imageKey) ||
+      Boolean(input.imageFileId !== undefined && input.imageFileId !== (before?.imageFileId ?? null));
+    const replaceThumbnail = Boolean(input.thumbnailKey !== undefined && input.thumbnailKey !== before?.thumbnailKey) ||
+      Boolean(input.thumbnailFileId !== undefined && input.thumbnailFileId !== (before?.thumbnailFileId ?? null));
+    if (replaceImage && before?.imageFileId && input.imageFileId !== before.imageFileId) detachedFileIds.push(before.imageFileId);
+    if (replaceThumbnail && before?.thumbnailFileId && input.thumbnailFileId !== before.thumbnailFileId) detachedFileIds.push(before.thumbnailFileId);
+    if (submission && (replaceImage || replaceThumbnail)) {
+      if (replaceImage && submission.privateImageFileId) detachedFileIds.push(submission.privateImageFileId);
+      if (replaceImage && submission.publicImageFileId && input.imageFileId !== submission.publicImageFileId) detachedFileIds.push(submission.publicImageFileId);
+      if (replaceThumbnail && submission.privateThumbnailFileId) detachedFileIds.push(submission.privateThumbnailFileId);
+      if (replaceThumbnail && submission.publicThumbnailFileId && input.thumbnailFileId !== submission.publicThumbnailFileId) detachedFileIds.push(submission.publicThumbnailFileId);
+      await tx.update(communityWallpaperSubmissions).set({
+        ...(replaceImage ? { privateImageFileId: null, publicImageFileId: input.imageFileId ?? null } : {}),
+        ...(replaceThumbnail ? { privateThumbnailFileId: null, publicThumbnailFileId: input.thumbnailFileId ?? null } : {}),
+      }).where(eq(communityWallpaperSubmissions.wallpaperId, id));
+    }
+    if (detachedFileIds.length) await tx.insert(imageKitCleanupJobs).values([...new Set(detachedFileIds)].map(fileId => ({ fileId, nextAttemptAt: new Date() })))
+      .onDuplicateKeyUpdate({ set: { nextAttemptAt: new Date() } });
+    const wallpaperInput = { ...input };
+    if (replaceImage && wallpaperInput.imageFileId === undefined) wallpaperInput.imageFileId = null;
+    if (replaceThumbnail && wallpaperInput.thumbnailFileId === undefined) wallpaperInput.thumbnailFileId = null;
+    await tx.update(wallpapers).set(wallpaperInput).where(eq(wallpapers.id, id));
     if (replaceVariants) await tx.delete(wallpaperVariants).where(eq(wallpaperVariants.wallpaperId, id));
     const primary = (await tx.select({ imageKey: wallpapers.imageKey, resolution: wallpapers.resolution, targetDevice: wallpapers.targetDevice, width: wallpapers.width, height: wallpapers.height, imageUrl: wallpapers.imageUrl, imageMime: wallpapers.imageMime, fileSize: wallpapers.fileSize }).from(wallpapers).where(eq(wallpapers.id, id)).limit(1))[0];
     if (primary && !replaceVariants) {
@@ -384,6 +472,7 @@ export async function updateWallpaper(
         await tx.insert(wallpaperVariants).values({ ...variant, wallpaperId: id });
       }
     }
+    return detachedFileIds;
   });
 }
 
@@ -399,6 +488,65 @@ export async function setWallpaperPublicationStatus(id: number, status: "draft" 
   const expectedStatus = status === "pending" ? "draft" : "pending";
   const result = await db.update(wallpapers).set({ publicationStatus: status }).where(and(eq(wallpapers.id, id), eq(wallpapers.isArchived, 0), eq(wallpapers.publicationStatus, expectedStatus)));
   return Number(result[0]?.affectedRows ?? 0) > 0;
+}
+
+export async function getCommunityWallpaperSubmission(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return (await db.select().from(communityWallpaperSubmissions).where(eq(communityWallpaperSubmissions.wallpaperId, id)).limit(1))[0] ?? null;
+}
+
+export async function publishCommunityWallpaperWithAssets(id: number, assets: {
+  imageKey?: string;
+  imageUrl?: string;
+  imageFileId?: string;
+  thumbnailKey?: string;
+  thumbnailUrl?: string;
+  thumbnailFileId?: string;
+}, expected: { imageKey: string; imageUrl: string; thumbnailKey: string | null; thumbnailUrl: string | null; privateImageFileId: string | null; privateThumbnailFileId: string | null; publicImageFileId: string | null; publicThumbnailFileId: string | null }, now: Date) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.transaction(async tx => {
+    const [submission] = await tx.select({
+      privateImageFileId: communityWallpaperSubmissions.privateImageFileId,
+      privateThumbnailFileId: communityWallpaperSubmissions.privateThumbnailFileId,
+      publicImageFileId: communityWallpaperSubmissions.publicImageFileId,
+      publicThumbnailFileId: communityWallpaperSubmissions.publicThumbnailFileId,
+    })
+      .from(communityWallpaperSubmissions).where(eq(communityWallpaperSubmissions.wallpaperId, id)).limit(1);
+    if (!submission || (submission.privateImageFileId ?? null) !== expected.privateImageFileId ||
+        (submission.privateThumbnailFileId ?? null) !== expected.privateThumbnailFileId ||
+        (submission.publicImageFileId ?? null) !== expected.publicImageFileId ||
+        (submission.publicThumbnailFileId ?? null) !== expected.publicThumbnailFileId) return false;
+    const result = await tx.update(wallpapers).set({ ...assets, publicationStatus: "published", updatedAt: now })
+      .where(and(
+        eq(wallpapers.id, id), eq(wallpapers.isArchived, 0), eq(wallpapers.publicationStatus, "pending"),
+        eq(wallpapers.imageKey, expected.imageKey),
+        eq(wallpapers.imageUrl, expected.imageUrl),
+        expected.thumbnailKey === null ? isNull(wallpapers.thumbnailKey) : eq(wallpapers.thumbnailKey, expected.thumbnailKey),
+        expected.thumbnailUrl === null ? isNull(wallpapers.thumbnailUrl) : eq(wallpapers.thumbnailUrl, expected.thumbnailUrl),
+      ));
+    if (Number(result[0]?.affectedRows ?? 0) !== 1) return false;
+    const metadataResult = await tx.update(communityWallpaperSubmissions).set({
+      privateImageFileId: null,
+      privateThumbnailFileId: null,
+      publicImageFileId: assets.imageFileId ?? expected.publicImageFileId,
+      publicThumbnailFileId: assets.thumbnailFileId ?? expected.publicThumbnailFileId,
+      promotedAt: now,
+    })
+      .where(and(
+        eq(communityWallpaperSubmissions.wallpaperId, id),
+        expected.privateImageFileId === null ? isNull(communityWallpaperSubmissions.privateImageFileId) : eq(communityWallpaperSubmissions.privateImageFileId, expected.privateImageFileId),
+        expected.privateThumbnailFileId === null ? isNull(communityWallpaperSubmissions.privateThumbnailFileId) : eq(communityWallpaperSubmissions.privateThumbnailFileId, expected.privateThumbnailFileId),
+        expected.publicImageFileId === null ? isNull(communityWallpaperSubmissions.publicImageFileId) : eq(communityWallpaperSubmissions.publicImageFileId, expected.publicImageFileId),
+        expected.publicThumbnailFileId === null ? isNull(communityWallpaperSubmissions.publicThumbnailFileId) : eq(communityWallpaperSubmissions.publicThumbnailFileId, expected.publicThumbnailFileId),
+      ));
+    if (Number(metadataResult[0]?.affectedRows ?? 0) !== 1) throw new Error("Community submission changed during publication.");
+    const stagedFileIds = [expected.privateImageFileId, expected.privateThumbnailFileId].filter((fileId): fileId is string => Boolean(fileId));
+    if (stagedFileIds.length) await tx.insert(imageKitCleanupJobs).values([...new Set(stagedFileIds)].map(fileId => ({ fileId, nextAttemptAt: now })))
+      .onDuplicateKeyUpdate({ set: { nextAttemptAt: now } });
+    return true;
+  });
 }
 
 export async function recordWallpaperDownload(id: number, variantId?: number) {
@@ -584,6 +732,18 @@ export async function deleteWallpaperPermanently(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   await db.transaction(async tx => {
+    const [wallpaper] = await tx.select({ imageFileId: wallpapers.imageFileId, thumbnailFileId: wallpapers.thumbnailFileId })
+      .from(wallpapers).where(eq(wallpapers.id, id)).limit(1);
+    const [submission] = await tx.select({
+      privateImageFileId: communityWallpaperSubmissions.privateImageFileId,
+      privateThumbnailFileId: communityWallpaperSubmissions.privateThumbnailFileId,
+      publicImageFileId: communityWallpaperSubmissions.publicImageFileId,
+      publicThumbnailFileId: communityWallpaperSubmissions.publicThumbnailFileId,
+    })
+      .from(communityWallpaperSubmissions).where(eq(communityWallpaperSubmissions.wallpaperId, id)).limit(1);
+    const fileIds = [wallpaper?.imageFileId, wallpaper?.thumbnailFileId, submission?.privateImageFileId, submission?.privateThumbnailFileId, submission?.publicImageFileId, submission?.publicThumbnailFileId].filter((fileId): fileId is string => Boolean(fileId));
+    if (fileIds.length) await tx.insert(imageKitCleanupJobs).values([...new Set(fileIds)].map(fileId => ({ fileId, nextAttemptAt: new Date() })))
+      .onDuplicateKeyUpdate({ set: { nextAttemptAt: new Date() } });
     await tx.delete(wallpaperVariants).where(eq(wallpaperVariants.wallpaperId, id));
     await tx.delete(wallpapers).where(eq(wallpapers.id, id));
   });
@@ -1194,5 +1354,6 @@ export async function getAdminWallpaperForEdit(id: number) {
   const [wallpaper] = await db.select().from(wallpapers).where(eq(wallpapers.id, id)).limit(1);
   if (!wallpaper) return null;
   const variants = await db.select().from(wallpaperVariants).where(eq(wallpaperVariants.wallpaperId, id)).orderBy(asc(wallpaperVariants.id));
-  return { ...wallpaper, extraVariantCount: variants.length, extraVariants: variants };
+  const [enriched] = await includeCommunitySubmissionMetadata(db, [wallpaper]);
+  return { ...enriched, extraVariantCount: variants.length, extraVariants: variants };
 }

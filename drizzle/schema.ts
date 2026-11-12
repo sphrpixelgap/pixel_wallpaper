@@ -78,10 +78,12 @@ export const wallpapers = mysqlTable("wallpapers", {
   description: text("description"),
   imageKey: varchar("imageKey", { length: 512 }).notNull(),
   imageUrl: varchar("imageUrl", { length: 1024 }).notNull(),
+  imageFileId: varchar("imageFileId", { length: 128 }),
   imageMime: varchar("imageMime", { length: 40 }).default("image/jpeg").notNull(),
   fileSize: int("fileSize").default(0).notNull(),
   thumbnailKey: varchar("thumbnailKey", { length: 512 }),
   thumbnailUrl: varchar("thumbnailUrl", { length: 1024 }),
+  thumbnailFileId: varchar("thumbnailFileId", { length: 128 }),
   downloadCount: int("downloadCount").default(0).notNull(),
   viewCount: int("viewCount").default(0).notNull(),
   isArchived: int("isArchived").default(0).notNull(),
@@ -96,6 +98,28 @@ export const wallpapers = mysqlTable("wallpapers", {
 
 export type Wallpaper = typeof wallpapers.$inferSelect;
 export type InsertWallpaper = typeof wallpapers.$inferInsert;
+
+export const communityWallpaperSubmissions = mysqlTable("community_wallpaper_submissions", {
+  wallpaperId: int("wallpaperId").primaryKey().references(() => wallpapers.id, { onDelete: "cascade" }),
+  privateImageFileId: varchar("privateImageFileId", { length: 128 }),
+  privateThumbnailFileId: varchar("privateThumbnailFileId", { length: 128 }),
+  publicImageFileId: varchar("publicImageFileId", { length: 128 }),
+  publicThumbnailFileId: varchar("publicThumbnailFileId", { length: 128 }),
+  sourceUrl: varchar("sourceUrl", { length: 1024 }),
+  rightsConfirmedAt: timestamp("rightsConfirmedAt").notNull(),
+  promotedAt: timestamp("promotedAt"),
+}, table => ({
+  promotedIdx: index("community_wallpaper_submissions_promoted_idx").on(table.promotedAt),
+}));
+
+export const imageKitCleanupJobs = mysqlTable("imagekit_cleanup_jobs", {
+  fileId: varchar("fileId", { length: 128 }).primaryKey(),
+  attempts: int("attempts").default(0).notNull(),
+  nextAttemptAt: timestamp("nextAttemptAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  nextAttemptIdx: index("imagekit_cleanup_next_attempt_idx").on(table.nextAttemptAt),
+}));
 
 export const wallpaperIssueReports = mysqlTable("wallpaper_issue_reports", {
   id: int("id").autoincrement().primaryKey(),

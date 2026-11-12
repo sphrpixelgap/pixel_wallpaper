@@ -33,6 +33,15 @@ describe("crawler-visible page responses", () => {
     expect(collections.body).toContain("<img");
   });
 
+  it("renders the community upload route with its own metadata and moderation explanation", async () => {
+    const upload = await renderSeoPage("/submit-wallpaper");
+    expect(upload.status).toBe(200);
+    expect(upload.title).toContain("ارسال والپیپر توسط کاربران");
+    expect(upload.canonical).toContain("/submit-wallpaper");
+    expect(upload.body).toContain("<h1>ارسال والپیپر برای بررسی</h1>");
+    expect(upload.body).toContain("فقط پس از تأیید منتشر می‌شود");
+  });
+
   it("writes route-specific, escaped metadata and visible body into the initial document", () => {
     const html = injectSeoPage(`<!doctype html><html><head><title>__SEO_TITLE__</title><meta name="description" content="__SEO_DESCRIPTION__"><meta name="robots" content="__SEO_ROBOTS__">__SEO_CANONICAL_TAG__<meta property="og:type" content="__SEO_OG_TYPE__"><meta property="og:title" content="__SEO_OG_TITLE__"><meta property="og:description" content="__SEO_OG_DESCRIPTION__">__SEO_OG_URL_TAG__<meta property="og:image" content="__SEO_OG_IMAGE__"><meta property="og:image:alt" content="__SEO_OG_IMAGE_ALT__"><meta name="twitter:title" content="__SEO_TWITTER_TITLE__"><meta name="twitter:description" content="__SEO_TWITTER_DESCRIPTION__"><meta name="twitter:image" content="__SEO_TWITTER_IMAGE__"></head><body><div id="root"></div><div id="seo-fallback">__SEO_BODY__</div></body></html>`, {
       status: 200,

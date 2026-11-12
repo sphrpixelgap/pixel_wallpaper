@@ -95,6 +95,7 @@ export function buildSitemapXml(wallpapers: readonly SitemapWallpaper[]) {
 
   add({ path: "/" });
   add({ path: "/request" });
+  add({ path: "/submit-wallpaper" });
   add({ path: "/collections" });
   for (const collection of collections) add({ path: `/collections/${collection.slug}` });
   const games = new Set<string>();

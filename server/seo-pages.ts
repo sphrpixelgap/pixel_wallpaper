@@ -158,6 +158,15 @@ export async function renderSeoPage(requestUrl: string): Promise<SeoPage> {
 
   if (pathname === "/404") return notFound();
 
+  if (pathname === "/submit-wallpaper") {
+    return page({
+      title: `ارسال والپیپر توسط کاربران | ${SITE_NAME}`,
+      description: "والپیپر خود را بدون نیاز به حساب کاربری ارسال کنید؛ فایل ابتدا خصوصی بررسی می‌شود و فقط با تایید مدیر در سایت منتشر خواهد شد.",
+      canonical: canonical("/submit-wallpaper"), robots: noindexQuery ? "noindex, follow" : "index, follow",
+      body: main(`<header class="page-header"><span class="eyebrow">مشارکت در گنجینه</span><h1>ارسال والپیپر برای بررسی</h1><p>تصویر و اطلاعاتش را بفرست؛ فایل تا زمان بررسی مدیر خصوصی می‌ماند و فقط پس از تأیید منتشر می‌شود. برای ارسال حساب کاربری، ایمیل یا شماره تماس لازم نیست.</p><p><a class="button-primary" href="/">مرور والپیپرهای منتشرشده</a> <a class="button-secondary" href="/request">درخواست والپیپر</a></p></header>`),
+    });
+  }
+
   if (pathname === "/request") {
     const preview = await getFeaturedPreview();
     return page({

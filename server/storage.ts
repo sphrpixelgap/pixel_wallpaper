@@ -1,5 +1,10 @@
 // ImageKit-backed storage for production uploads.
+import { createHmac, randomUUID } from "node:crypto";
 import { ENV } from "./_core/env";
+
+const MAX_STORED_IMAGE_BYTES = 12 * 1024 * 1024;
+type StoragePutOptions = { isPrivateFile?: boolean };
+export type StoragePutResult = { key: string; url: string; fileId?: string; filePath?: string };
 
 function getImageKitEndpoint() {
   const endpoint = ENV.imageKitUrlEndpoint.replace(/\/+$/, "");
@@ -67,10 +72,16 @@ export function resolveImageKitDownloadUrl(relKey: string): string {
   return target.toString();
 }
 
-export async function storagePut(relKey: string, data: Buffer | Uint8Array | string, contentType = "application/octet-stream"): Promise<{ key: string; url: string }> {
+export async function storagePut(
+  relKey: string,
+  data: Buffer | Uint8Array | string,
+  contentType = "application/octet-stream",
+  options: StoragePutOptions = {},
+): Promise<StoragePutResult> {
   const { privateKey } = getImageKitUploadConfig();
   const key = normalizeKey(relKey);
-  const fileName = key.split("/").pop() || `upload-${crypto.randomUUID()}`;
+  if (!key || !isSafePath(key)) throw new Error("Invalid image storage key.");
+  const fileName = key.split("/").pop() || `upload-${randomUUID()}`;
   const folder = key.includes("/") ? `/${key.slice(0, key.lastIndexOf("/"))}` : "/";
   const blob = typeof data === "string" ? new Blob([data], { type: contentType }) : new Blob([data as any], { type: contentType });
   const form = new FormData();
@@ -78,16 +89,39 @@ export async function storagePut(relKey: string, data: Buffer | Uint8Array | str
   form.append("fileName", fileName);
   form.append("folder", folder);
   form.append("useUniqueFileName", "true");
-  form.append("tags", "pixel-wallpaper");
+  form.append("isPrivateFile", options.isPrivateFile ? "true" : "false");
+  form.append("tags", options.isPrivateFile ? "pixel-wallpaper,community-pending" : "pixel-wallpaper");
   const auth = Buffer.from(`${privateKey}:`).toString("base64");
-  const response = await fetch("https://upload.imagekit.io/api/v1/files/upload", { method: "POST", headers: { Authorization: `Basic ${auth}` }, body: form });
+  const response = await fetch("https://upload.imagekit.io/api/v1/files/upload", { method: "POST", headers: { Authorization: `Basic ${auth}` }, body: form, signal: AbortSignal.timeout(45_000) });
   if (!response.ok) {
     const message = await response.text().catch(() => response.statusText);
-    throw new Error(`ImageKit upload failed (${response.status}): ${message}`);
+    throw new Error(`ImageKit upload failed (${response.status}): ${message.slice(0, 500)}`);
   }
-  const result = await response.json() as { url?: string };
-  if (!result.url) throw new Error("ImageKit returned no public URL");
-  return { key: result.url, url: result.url };
+  const result = await response.json() as { url?: string; fileId?: string; filePath?: string };
+  if (!result.url) throw new Error("ImageKit returned no file URL");
+  const url = resolveImageKitDownloadUrl(result.url);
+  const filePath = result.filePath ? normalizeKey(result.filePath) : undefined;
+  if (filePath) resolveImageKitDownloadUrl(filePath);
+  return { key: filePath || url, url, fileId: result.fileId, filePath };
+}
+
+/** Create a short-lived signed delivery URL for a file marked private in ImageKit. */
+export function storageSignPrivateUrl(relKey: string, expiresInSeconds = 600, now = Date.now()): string {
+  const { privateKey } = getImageKitUploadConfig();
+  const url = resolveImageKitDownloadUrl(relKey);
+  const parsed = new URL(url);
+  if (parsed.search) throw new Error("A private ImageKit URL cannot contain a pre-existing query string.");
+  const endpoint = getValidatedImageKitEndpoint();
+  const prefix = `${endpoint.origin}${endpoint.pathname.replace(/\/+$/, "")}/`;
+  if (!url.startsWith(prefix)) throw new Error("The stored image URL is outside the configured ImageKit endpoint.");
+  const relativePath = url.slice(prefix.length);
+  if (!relativePath) throw new Error("Invalid private ImageKit file path.");
+  const safeLifetime = Math.min(Math.max(Math.floor(expiresInSeconds), 30), 3600);
+  const expiry = Math.floor(now / 1000) + safeLifetime;
+  const signature = createHmac("sha1", privateKey).update(`${relativePath}${expiry}`).digest("hex");
+  parsed.searchParams.set("ik-t", String(expiry));
+  parsed.searchParams.set("ik-s", signature);
+  return parsed.toString();
 }
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
@@ -102,4 +136,36 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
 export async function storageFetch(relKey: string): Promise<Response> {
   const url = await storageGetSignedUrl(relKey);
   return fetch(url, { redirect: "error", signal: AbortSignal.timeout(30_000) });
+}
+
+export async function storageFetchPrivate(relKey: string): Promise<Response> {
+  const url = storageSignPrivateUrl(relKey, 300);
+  return fetch(url, { redirect: "error", signal: AbortSignal.timeout(30_000) });
+}
+
+/** Copy a staged private image to a new public object without changing the staged asset's privacy. */
+export async function storagePromotePrivateImage(relKey: string): Promise<StoragePutResult> {
+  const response = await storageFetchPrivate(relKey);
+  if (!response.ok) throw new Error(`Private ImageKit file could not be read (${response.status}).`);
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > MAX_STORED_IMAGE_BYTES) throw new Error("Stored image exceeds the promotion size limit.");
+  const data = Buffer.from(await response.arrayBuffer());
+  if (!data.length || data.length > MAX_STORED_IMAGE_BYTES) throw new Error("Stored image is empty or exceeds the promotion size limit.");
+  return storagePut(`wallpapers/${randomUUID()}.webp`, data, "image/webp");
+}
+
+export async function storageDeleteFile(fileId: string): Promise<void> {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(fileId)) throw new Error("Invalid ImageKit file ID.");
+  const { privateKey } = getImageKitUploadConfig();
+  const auth = Buffer.from(`${privateKey}:`).toString("base64");
+  const response = await fetch(`https://api.imagekit.io/v1/files/${encodeURIComponent(fileId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Basic ${auth}` },
+    redirect: "error",
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok && response.status !== 404) {
+    const message = await response.text().catch(() => response.statusText);
+    throw new Error(`ImageKit delete failed (${response.status}): ${message.slice(0, 300)}`);
+  }
 }

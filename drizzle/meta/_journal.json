@@ -85,6 +85,27 @@
       "when": 1793809210345,
       "tag": "0011_dashboard_workflows",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1794482060990,
+      "tag": "0012_community_wallpaper_submissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1794483100912,
+      "tag": "0013_imagekit_cleanup_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1794483848280,
+      "tag": "0014_community_public_asset_ids",
+      "breakpoints": true
     }
   ]
 }

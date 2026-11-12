@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import { Archive, ArrowLeft, Check, HeartPulse, History, ImagePlus, LayoutDashboard, Layers, LogOut, MessageSquareText, Pencil, Settings2, ShieldAlert, Tags, Trash2, Upload, UserRoundCog, Users, X } from "lucide-react";
-import { trpc, type Wallpaper } from "@/lib/trpc";
+import { trpc, type AdminWallpaper, type Wallpaper } from "@/lib/trpc";
 import { hasAdminPermission, type AdminPermissionKey } from "@shared/admin-permissions";
 import { categories, colors, deviceForDimensions, devices, formatBytes, moods, resolutionForDimensions } from "@/lib/wallpaper";
 import { blobAsFile, processWallpaperImage } from "@/lib/image-processing";
@@ -95,7 +95,7 @@ export default function Admin() {
   const updateRequestStatus = trpc.requests.updateStatus.useMutation();
   const deleteRequest = trpc.requests.deletePermanently.useMutation();
   const categoryQuery = trpc.taxonomy.categories.useQuery(undefined, { enabled: isAdmin && canAccessSection("wallpapers") && activeSection === "wallpapers", retry: false });
-  const [editing, setEditing] = useState<Wallpaper | null>(null);
+  const [editing, setEditing] = useState<AdminWallpaper | null>(null);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState(categories[0]);
   const [gameTitle, setGameTitle] = useState("");
@@ -190,7 +190,7 @@ export default function Admin() {
   useEffect(() => { setSelectedIds([]); }, [wallpaperPage]);
   useEffect(() => { if (wallpaperPage > totalWallpaperPages) setWallpaperPage(totalWallpaperPages); }, [wallpaperPage, totalWallpaperPages]);
 
-  function beginEdit(item: Wallpaper) {
+  function beginEdit(item: AdminWallpaper) {
     setEditing(item); setTitle(item.title); setCategory(item.category); setGameTitle(item.gameTitle ?? "");
     setTags(item.tags ?? ""); setMood(item.mood); setColor(item.dominantColor); setTargetDevice(item.targetDevice);
     setDescription(item.description ?? ""); setDimensions({ width: item.width, height: item.height });
@@ -218,9 +218,9 @@ export default function Admin() {
     const response = await fetch("/api/admin/upload?purpose=wallpaper", {
       method: "POST", credentials: "include", headers: { "Content-Type": imageFile.type }, body: imageFile,
     });
-    const data = await response.json() as { key?: string; url?: string; error?: string };
-    if (!response.ok || !data.key || !data.url) throw new Error(data.error ?? "بارگذاری تصویر انجام نشد.");
-    return { imageKey: data.key, imageUrl: data.url, imageMime: imageFile.type as "image/webp", fileSize: imageFile.size };
+    const data = await response.json() as { key?: string; url?: string; fileId?: string; error?: string };
+    if (!response.ok || !data.key || !data.url || !data.fileId) throw new Error(data.error ?? "بارگذاری تصویر انجام نشد.");
+    return { imageKey: data.key, imageUrl: data.url, imageFileId: data.fileId, imageMime: imageFile.type as "image/webp", fileSize: imageFile.size };
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -235,7 +235,7 @@ export default function Admin() {
     if (variantFiles.some(item => !item.type.match(/^image\/(png|jpeg|webp)$/) || item.size > MAX_FILE_SIZE)) { setError("هر نسخه باید PNG، JPG یا WEBP و حداکثر ۱۲ مگابایت باشد."); return; }
     setBusy(true);
     try {
-      let imageData: { imageKey: string; imageUrl: string; imageMime: "image/webp"; fileSize: number; thumbnailKey?: string; thumbnailUrl?: string } | undefined;
+      let imageData: { imageKey: string; imageUrl: string; imageFileId: string; imageMime: "image/webp"; fileSize: number; thumbnailKey?: string; thumbnailUrl?: string; thumbnailFileId?: string } | undefined;
       let mainDimensions = dimensions;
       if (file) {
         const processed = await processWallpaperImage(file);
@@ -244,7 +244,7 @@ export default function Admin() {
           uploadImage(blobAsFile(processed.original, `${file.name.replace(/\.[^.]+$/, "")}.webp`)),
           uploadImage(blobAsFile(processed.thumbnail, `thumbnail-${crypto.randomUUID()}.webp`)),
         ]);
-        imageData = { ...original, thumbnailKey: thumbnail.imageKey, thumbnailUrl: thumbnail.imageUrl };
+        imageData = { ...original, thumbnailKey: thumbnail.imageKey, thumbnailUrl: thumbnail.imageUrl, thumbnailFileId: thumbnail.imageFileId };
       }
       const variants = await Promise.all(variantFiles.map(async variantFile => {
         const processed = await processWallpaperImage(variantFile);
@@ -258,7 +258,7 @@ export default function Admin() {
         mood, dominantColor: color as "purple" | "blue" | "red" | "green" | "orange" | "mono", targetDevice: targetDevice as "desktop" | "mobile" | "ultrawide",
         resolution: mainResolution, width: mainDimensions.width, height: mainDimensions.height,
         description: description.trim() || null,
-        ...(imageData ?? (editing ? { imageKey: editing.imageKey, imageUrl: editing.imageUrl, imageMime: editing.imageMime as "image/jpeg" | "image/png" | "image/webp", fileSize: editing.fileSize, thumbnailKey: editing.thumbnailKey, thumbnailUrl: editing.thumbnailUrl } : {})),
+        ...(imageData ?? (editing ? { imageKey: editing.imageKey, imageUrl: editing.imageUrl, imageFileId: editing.imageFileId ?? null, imageMime: editing.imageMime as "image/jpeg" | "image/png" | "image/webp", fileSize: editing.fileSize, thumbnailKey: editing.thumbnailKey, thumbnailUrl: editing.thumbnailUrl, thumbnailFileId: editing.thumbnailFileId ?? null } : {})),
       };
       if (editing) {
         await update.mutateAsync({ id: editing.id, data: fields, variants, replaceVariants: Boolean(imageData) });
@@ -436,7 +436,7 @@ export default function Admin() {
           <div className="admin-row-actions"><button className="icon-button" type="button" title="ویرایش" aria-label={`ویرایش ${item.title}`} onClick={() => beginEdit(item)}><Pencil size={15} /></button>{!item.isArchived && item.publicationStatus === "draft" && <button className="icon-button" type="button" title="ارسال به صف بازبینی" aria-label={`ارسال ${item.title} به صف بازبینی`} disabled={setPublicationStatus.isPending} onClick={() => void submitDraftForReview(item)}><Upload size={15} /></button>}{item.extraVariantCount > 0 && <button className="icon-button danger" type="button" title="حذف همهٔ نسخه‌های اضافه" aria-label={`حذف نسخه‌های اضافهٔ ${item.title}`} disabled={deleteExtraVariants.isPending} onClick={() => void removeExtraVariants(item)}><Layers size={15} /></button>}{!item.isArchived && <button className="icon-button danger" type="button" title="بایگانی" aria-label={`بایگانی ${item.title}`} onClick={() => void archiveItem(item)}><Archive size={15} /></button>}<button className="icon-button danger" type="button" title="حذف دائمی از سایت و دیتابیس؛ فایل ممکن است باقی بماند" aria-label={`حذف دائمی ${item.title}`} disabled={deletePermanently.isPending} onClick={() => void permanentlyDeleteItem(item)}><Trash2 size={15} /></button></div>
         </article>)}</div> : <div className="empty-state"><div className="empty-icon"><ImagePlus size={22} /></div><h3>موردی پیدا نشد</h3><p>فیلترها را تغییر دهید یا از فرم کناری والپیپر تازه اضافه کنید.</p></div>}
         {totalWallpaperPages > 1 && <div className="admin-list-pagination"><button className="button-secondary" type="button" disabled={wallpaperPage <= 1} onClick={() => setWallpaperPage(page => page - 1)}>قبلی</button><span>صفحهٔ {wallpaperPage.toLocaleString("fa-IR")} از {totalWallpaperPages.toLocaleString("fa-IR")} · {(list.data?.total ?? 0).toLocaleString("fa-IR")} نتیجه</span><button className="button-secondary" type="button" disabled={wallpaperPage >= totalWallpaperPages} onClick={() => setWallpaperPage(page => page + 1)}>بعدی</button></div>}
-        <details className="admin-duplicate-candidates" onToggle={event => setShowDuplicateCandidates(event.currentTarget.open)}><summary>نامزدهای مشابه برای بررسی دستی {duplicateCandidates.data?.length ? `(${duplicateCandidates.data.length.toLocaleString("fa-IR")})` : ""}</summary><p className="form-hint">این‌ها فقط شباهت متنی و مشخصاتی دارند و تکراری قطعی نیستند؛ هیچ موردی خودکار حذف نمی‌شود.</p>{duplicateCandidates.isLoading ? <span className="form-hint">در حال بررسی...</span> : duplicateCandidates.error ? <span className="error-text">بررسی مشابه‌ها ممکن نشد.</span> : duplicateCandidates.data?.length ? duplicateCandidates.data.map((group, index) => <div className="admin-duplicate-group" key={`candidate-${index}`}>{group.map(candidate => <div className="admin-duplicate-item" key={candidate.id}><img src={candidate.thumbnailUrl || candidate.imageUrl} alt="" /><span>{candidate.gameTitle ? `${candidate.gameTitle} · ` : ""}<Link href={`/wallpapers/${candidate.id}`}>{candidate.title}</Link><small> · {candidate.width}×{candidate.height}</small></span></div>)}</div>) : <span className="form-hint">نامزد مشابهی پیدا نشد.</span>}</details>
+        <details className="admin-duplicate-candidates" onToggle={event => setShowDuplicateCandidates(event.currentTarget.open)}><summary>نامزدهای مشابه برای بررسی دستی {duplicateCandidates.data?.length ? `(${duplicateCandidates.data.length.toLocaleString("fa-IR")})` : ""}</summary><p className="form-hint">این‌ها فقط شباهت متنی و مشخصاتی دارند و تکراری قطعی نیستند؛ هیچ موردی خودکار حذف نمی‌شود.</p>{duplicateCandidates.isLoading ? <span className="form-hint">در حال بررسی...</span> : duplicateCandidates.error ? <span className="error-text">بررسی مشابه‌ها ممکن نشد.</span> : duplicateCandidates.data?.length ? duplicateCandidates.data.map((group, index) => <div className="admin-duplicate-group" key={`candidate-${index}`}>{group.map(candidate => <div className="admin-duplicate-item" key={candidate.id}><img src={candidate.thumbnailUrl || candidate.imageUrl} alt="" /><span>{candidate.gameTitle ? `${candidate.gameTitle} · ` : ""}{candidate.publicationStatus === "published" ? <Link href={`/wallpapers/${candidate.id}`}>{candidate.title}</Link> : <strong>{candidate.title}</strong>}<small> · {candidate.width}×{candidate.height}{candidate.publicationStatus === "pending" ? " · در صف بررسی" : candidate.publicationStatus === "draft" ? " · پیش‌نویس" : ""}</small></span></div>)}</div>) : <span className="form-hint">نامزد مشابهی پیدا نشد.</span>}</details>
       </div>
       </div>
     </section>}

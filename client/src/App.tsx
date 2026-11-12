@@ -8,6 +8,7 @@ import Home from "@/pages/Home";
 import WallpaperDetail from "@/pages/WallpaperDetail";
 import Games from "@/pages/Games";
 import RequestWallpaper from "@/pages/RequestWallpaper";
+import SubmitWallpaper from "@/pages/SubmitWallpaper";
 import TrackRequest from "@/pages/TrackRequest";
 import { CollectionDetail, CollectionsIndex } from "@/pages/Collections";
 import SiteLayout from "@/components/SiteLayout";
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/collections" component={CollectionsIndex} />
         <Route path="/favorites" component={Favorites} />
         <Route path="/request" component={RequestWallpaper} />
+        <Route path="/submit-wallpaper" component={SubmitWallpaper} />
         <Route path="/request/track" component={TrackRequest} />
         <Route path="/admin/admin" component={Admin} />
         <Route path="/admin"><Redirect to="/admin/admin" /></Route>

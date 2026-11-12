@@ -10,13 +10,56 @@ import { isBootstrapOwnerCandidate, isSiteAdmin } from "./admin";
 import { ADMIN_LOGIN_ADDRESS_ATTEMPT_LIMIT, ADMIN_LOGIN_ATTEMPT_LIMIT, ADMIN_LOGIN_WINDOW_MS, clearAdminSession, getAdminRequestAddress, hashAdminPassword, issueAdminSession, makeAdminLoginBucketHashes, normalizeAdminUsername, verifyAdminPassword, verifyAdminPasswordOrDummy } from "./admin-auth";
 import * as db from "./db";
 import { NO_ADMIN_PERMISSIONS } from "../shared/admin-permissions";
+import type { Wallpaper } from "../drizzle/schema";
 import { checkWallpaperRequestDuplicates, getRequestDuplicatePolicy } from "./request-duplicate-check";
 import { hashClientAddress } from "./request-rate-limit";
+import { storageDeleteFile, storagePromotePrivateImage, storageSignPrivateUrl } from "./storage";
+import { runImageKitCleanupQueue } from "./imagekit-cleanup";
+
+type CommunitySubmission = NonNullable<Awaited<ReturnType<typeof db.getCommunityWallpaperSubmission>>>;
+type AdminWallpaperWithSubmission = {
+  imageKey: string;
+  imageUrl: string;
+  imageFileId?: string | null;
+  thumbnailKey: string | null;
+  thumbnailUrl: string | null;
+  thumbnailFileId?: string | null;
+  communitySubmission?: CommunitySubmission | null;
+};
+
+async function signAdminWallpaperPreview<T extends AdminWallpaperWithSubmission>(item: T): Promise<T> {
+  const submission = item.communitySubmission;
+  if (!submission) return item;
+  return {
+    ...item,
+    imageFileId: submission.publicImageFileId,
+    thumbnailFileId: submission.publicThumbnailFileId,
+    imageUrl: submission.privateImageFileId ? storageSignPrivateUrl(item.imageKey, 900) : item.imageUrl,
+    thumbnailUrl: submission.privateThumbnailFileId && item.thumbnailKey
+      ? storageSignPrivateUrl(item.thumbnailKey, 900)
+      : item.thumbnailUrl,
+  };
+}
+
+async function signAdminWallpaperPage<T extends { items: AdminWallpaperWithSubmission[] }>(page: T): Promise<T> {
+  return { ...page, items: await Promise.all(page.items.map(signAdminWallpaperPreview)) };
+}
 
 function requestClientHash(request: Parameters<typeof getAdminRequestAddress>[0]) {
   const address = getAdminRequestAddress(request);
   const secret = ENV.cookieSecret || process.env.DATABASE_URL || "pixelwp-client-rate-limit-v1";
   return hashClientAddress(address, secret);
+}
+
+function publicWallpaper<T extends Wallpaper>(item: T): Omit<T, "imageFileId" | "thumbnailFileId"> {
+  const result = { ...item } as Omit<T, "imageFileId" | "thumbnailFileId"> & Partial<Pick<T, "imageFileId" | "thumbnailFileId">>;
+  delete result.imageFileId;
+  delete result.thumbnailFileId;
+  return result;
+}
+
+function publicWallpaperPage<TItem extends Wallpaper, TPage extends { items: TItem[] }>(page: TPage): Omit<TPage, "items"> & { items: Array<Omit<TItem, "imageFileId" | "thumbnailFileId">> } {
+  return { ...page, items: page.items.map(publicWallpaper) };
 }
 
 const siteSettingsFields = z.object({
@@ -62,10 +105,12 @@ const wallpaperFields = z.object({
   description: z.string().trim().max(3000).optional().nullable(),
   imageKey: z.string().min(1).max(512),
   imageUrl: z.string().url().startsWith("https://").max(1024),
+  imageFileId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).optional().nullable(),
   imageMime: z.enum(["image/png", "image/jpeg", "image/webp"]).optional(),
   fileSize: z.number().int().min(0).max(12 * 1024 * 1024).optional(),
   thumbnailKey: z.string().max(512).optional().nullable(),
   thumbnailUrl: z.string().url().startsWith("https://").max(1024).optional().nullable(),
+  thumbnailFileId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).optional().nullable(),
 });
 
 const wallpaperRequestFields = z.object({
@@ -358,17 +403,17 @@ export const appRouter = router({
       }),
   }),
   wallpapers: router({
-    list: publicProcedure.input(filterInput).query(({ input }) => db.listWallpapers(input ?? {})),
-    page: publicProcedure.input(catalogPageInput).query(({ input }) => {
+    list: publicProcedure.input(filterInput).query(async ({ input }) => (await db.listWallpapers(input ?? {})).map(publicWallpaper)),
+    page: publicProcedure.input(catalogPageInput).query(async ({ input }) => {
       const { page, pageSize, ...filters } = input;
-      return db.listWallpapersPage(filters, page, pageSize ?? 24);
+      return publicWallpaperPage(await db.listWallpapersPage(filters, page, pageSize ?? 24));
     }),
-    byIds: publicProcedure.input(z.object({ ids: z.array(z.number().int().positive()).max(1000) })).query(({ input }) => db.listWallpapersByIds(input.ids)),
+    byIds: publicProcedure.input(z.object({ ids: z.array(z.number().int().positive()).max(1000) })).query(async ({ input }) => (await db.listWallpapersByIds(input.ids)).map(publicWallpaper)),
     suggestions: publicProcedure.input(z.object({ q: z.string().trim().min(2).max(80) })).query(({ input }) => db.listSuggestions(input.q)),
     detail: publicProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ input }) => {
       const wallpaper = await db.getWallpaperById(input.id);
       if (!wallpaper) throw new TRPCError({ code: "NOT_FOUND", message: "والپیپر پیدا نشد" });
-      return wallpaper;
+      return publicWallpaper(wallpaper);
     }),
     recordView: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
       if (!await db.consumeWallpaperViewAttempt(requestClientHash(ctx.req), new Date())) {
@@ -410,19 +455,81 @@ export const appRouter = router({
     getForEdit: adminSectionProcedure("wallpapers").input(z.object({ id: z.number().int().positive() })).query(async ({ input }) => {
       const item = await db.getAdminWallpaperForEdit(input.id);
       if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "والپیپر پیدا نشد." });
-      return item;
+      return signAdminWallpaperPreview(item);
     }),
     reviewQueue: adminSectionProcedure("wallpapers").input(z.object({ page: z.number().int().min(1).max(1_000_000) }))
-      .query(({ input }) => db.listAdminWallpapersPage({ page: input.page, pageSize: 20, state: "pending" })),
+      .query(async ({ input }) => signAdminWallpaperPage(await db.listAdminWallpapersPage({ page: input.page, pageSize: 20, state: "pending" }))),
     setPublicationStatus: adminSectionProcedure("wallpapers").input(z.object({ id: z.number().int().positive(), status: z.enum(["draft", "pending", "published"]) })).mutation(async ({ input }) => {
-      if (!await db.setWallpaperPublicationStatus(input.id, input.status)) throw new TRPCError({ code: "NOT_FOUND", message: "والپیپر پیدا نشد یا بایگانی شده است." });
-      return { success: true };
+      if (input.status !== "published") {
+        if (!await db.setWallpaperPublicationStatus(input.id, input.status)) throw new TRPCError({ code: "NOT_FOUND", message: "والپیپر پیدا نشد یا بایگانی شده است." });
+        return { success: true };
+      }
+
+      const item = await db.getAdminWallpaperForEdit(input.id);
+      if (!item || item.isArchived !== 0 || item.publicationStatus !== "pending") {
+        throw new TRPCError({ code: "NOT_FOUND", message: "والپیپر پیدا نشد یا دیگر در صف انتظار نیست." });
+      }
+      const submission = item.communitySubmission;
+      const stagedImageId = submission?.privateImageFileId ?? null;
+      const stagedThumbnailId = submission?.privateThumbnailFileId ?? null;
+      if (!stagedImageId && !stagedThumbnailId) {
+        if (!await db.setWallpaperPublicationStatus(input.id, "published")) throw new TRPCError({ code: "NOT_FOUND", message: "والپیپر پیدا نشد یا بایگانی شده است." });
+        return { success: true };
+      }
+
+      const publicFileIds: string[] = [];
+      const assets: { imageKey?: string; imageUrl?: string; imageFileId?: string; thumbnailKey?: string; thumbnailUrl?: string; thumbnailFileId?: string } = {};
+      let committed = false;
+      try {
+        if (stagedImageId) {
+          const promotedImage = await storagePromotePrivateImage(item.imageKey);
+          if (promotedImage.fileId) publicFileIds.push(promotedImage.fileId);
+          if (!promotedImage.fileId || !promotedImage.filePath) throw new Error("ImageKit did not return identifiers for the public image.");
+          assets.imageKey = promotedImage.filePath;
+          assets.imageUrl = promotedImage.url;
+          assets.imageFileId = promotedImage.fileId;
+        }
+        if (stagedThumbnailId && item.thumbnailKey) {
+          const promotedThumbnail = await storagePromotePrivateImage(item.thumbnailKey);
+          if (promotedThumbnail.fileId) publicFileIds.push(promotedThumbnail.fileId);
+          if (!promotedThumbnail.fileId || !promotedThumbnail.filePath) throw new Error("ImageKit did not return identifiers for the public thumbnail.");
+          assets.thumbnailKey = promotedThumbnail.filePath;
+          assets.thumbnailUrl = promotedThumbnail.url;
+          assets.thumbnailFileId = promotedThumbnail.fileId;
+        }
+        const published = await db.publishCommunityWallpaperWithAssets(input.id, assets, {
+          imageKey: item.imageKey,
+          imageUrl: item.imageUrl,
+          thumbnailKey: item.thumbnailKey,
+          thumbnailUrl: item.thumbnailUrl,
+          privateImageFileId: stagedImageId,
+          privateThumbnailFileId: stagedThumbnailId,
+          publicImageFileId: item.communitySubmission?.publicImageFileId ?? null,
+          publicThumbnailFileId: item.communitySubmission?.publicThumbnailFileId ?? null,
+        }, new Date());
+        if (!published) throw new TRPCError({ code: "NOT_FOUND", message: "وضعیت والپیپر هنگام انتشار تغییر کرده است؛ صف را تازه‌سازی کنید." });
+        committed = true;
+        void runImageKitCleanupQueue();
+        return { success: true };
+      } catch (error) {
+        if (!committed && publicFileIds.length) {
+          try {
+            await db.enqueueImageKitCleanup(publicFileIds);
+            void runImageKitCleanupQueue();
+          } catch {
+            await Promise.all(publicFileIds.map(fileId => storageDeleteFile(fileId).catch(() => undefined)));
+          }
+        }
+        if (error instanceof TRPCError) throw error;
+        console.error("[Community wallpaper] Promotion failed", error instanceof Error ? error.name : "UnknownError");
+        throw new TRPCError({ code: "BAD_GATEWAY", message: "انتقال تصویر به فضای عمومی کامل نشد؛ مورد همچنان در صف انتظار است." });
+      }
     }),
-    list: adminSectionProcedure("wallpapers").query(() => db.listAdminWallpapers()),
+    list: adminSectionProcedure("wallpapers").query(async () => Promise.all((await db.listAdminWallpapers()).map(signAdminWallpaperPreview))),
     listPage: adminSectionProcedure("wallpapers").input(z.object({
       page: z.number().int().min(1).max(1_000_000), pageSize: z.number().int().min(1).max(50),
       q: z.string().max(120).optional(), category: z.string().max(80).optional(), state: z.enum(["all", "active", "archived", "pending", "draft", "published"]).default("all"),
-    })).query(({ input }) => db.listAdminWallpapersPage(input)),
+    })).query(async ({ input }) => signAdminWallpaperPage(await db.listAdminWallpapersPage(input))),
     bulkUpdate: adminSectionProcedure("wallpapers").input(z.object({
       ids: z.array(z.number().int().positive()).min(1).max(100),
       operation: z.discriminatedUnion("type", [
@@ -433,7 +540,7 @@ export const appRouter = router({
         z.object({ type: z.literal("restore") }),
       ]),
     })).mutation(({ input }) => db.bulkUpdateWallpapers(input.ids, input.operation)),
-    duplicateCandidates: adminSectionProcedure("wallpapers").query(() => db.listPossibleWallpaperDuplicates()),
+    duplicateCandidates: adminSectionProcedure("wallpapers").query(async () => Promise.all((await db.listPossibleWallpaperDuplicates()).map(group => Promise.all(group.map(signAdminWallpaperPreview))))),
     deleteExtraVariants: adminSectionProcedure("wallpapers").input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
       await db.deleteExtraWallpaperVariants(input.id);
       return { success: true };
@@ -449,6 +556,7 @@ export const appRouter = router({
       variants: z.array(variantFields).max(8).optional(), replaceVariants: z.boolean().optional(),
     })).mutation(async ({ input }) => {
       await db.updateWallpaper(input.id, input.data, input.variants, input.replaceVariants);
+      void runImageKitCleanupQueue();
       return { success: true };
     }),
     archive: adminSectionProcedure("wallpapers").input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
@@ -457,6 +565,7 @@ export const appRouter = router({
     }),
     deletePermanently: adminSectionProcedure("wallpapers").input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
       await db.deleteWallpaperPermanently(input.id);
+      void runImageKitCleanupQueue();
       return { success: true };
     }),
     users: adminSectionProcedure("users").input(z.object({ page: z.number().int().min(1).max(Math.floor(Number.MAX_SAFE_INTEGER / 25)) })).query(async ({ input }) => {
