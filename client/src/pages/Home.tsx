@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { ArrowLeft, ArrowUpLeft, ChevronLeft, ChevronRight, Clock3, Flame, Gamepad2, Image as ImageIcon, Palette, Search, Shuffle, Sparkles, Star, X } from "lucide-react";
+import { ArrowLeft, ArrowUpLeft, ChevronLeft, ChevronRight, Flame, Gamepad2, Image as ImageIcon, Palette, Search, Shuffle, Sparkles, Star, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { categories as fallbackCategories, colors, devices, moods, resolutions, slugifyGame } from "@/lib/wallpaper";
@@ -11,7 +11,7 @@ const PAGE_SIZE = 24;
 const FEATURED_PAGE_SIZE = 4;
 const optionId = (index: number) => `wallpaper-search-option-${index}`;
 
-type FeaturedKey = "popular" | "newest" | "action" | "adventure" | "cyberpunk";
+type FeaturedKey = "popular" | "action" | "adventure" | "cyberpunk";
 type CollectionData<T> = { items: T[]; total: number } | undefined;
 
 function collectionPage<T>(data: CollectionData<T>, requestedPage: number) {
@@ -50,7 +50,7 @@ export default function Home() {
   const [color, setColor] = useState("");
   const [sort, setSort] = useState<"newest" | "popular" | "resolution" | "aspect" | "size">("newest");
   const [page, setPage] = useState(1);
-  const [featuredPages, setFeaturedPages] = useState<Record<FeaturedKey, number>>({ popular: 1, newest: 1, action: 1, adventure: 1, cyberpunk: 1 });
+  const [featuredPages, setFeaturedPages] = useState<Record<FeaturedKey, number>>({ popular: 1, action: 1, adventure: 1, cyberpunk: 1 });
   const settings = trpc.siteSettings.public.useQuery();
   const taxonomyCategories = trpc.taxonomy.categories.useQuery();
   const siteSettings = settings.data;
@@ -77,7 +77,6 @@ export default function Home() {
   useEffect(() => { setPage(1); }, [filters]);
 
   const query = trpc.wallpapers.page.useQuery({ ...filters, page });
-  const newest = trpc.wallpapers.page.useQuery({ sort: "newest", page: featuredPages.newest, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters, placeholderData: previous => previous });
   const popular = trpc.wallpapers.page.useQuery({ sort: "popular", page: featuredPages.popular, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters, placeholderData: previous => previous });
   const actionCollection = trpc.wallpapers.page.useQuery({ category: "اکشن", sort: "popular", page: featuredPages.action, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters, placeholderData: previous => previous });
   const adventureCollection = trpc.wallpapers.page.useQuery({ category: "ماجراجویی", sort: "popular", page: featuredPages.adventure, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters, placeholderData: previous => previous });
@@ -91,7 +90,6 @@ export default function Home() {
   const total = query.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const popularPage = collectionPage(popular.data, featuredPages.popular);
-  const newestPage = collectionPage(newest.data, featuredPages.newest);
   const actionPage = collectionPage(actionCollection.data, featuredPages.action);
   const adventurePage = collectionPage(adventureCollection.data, featuredPages.adventure);
   const cyberpunkPage = collectionPage(cyberpunkCollection.data, featuredPages.cyberpunk);
@@ -101,7 +99,7 @@ export default function Home() {
   });
   useEffect(() => {
     const limits: Record<FeaturedKey, number> = {
-      popular: popular.data?.total ?? 0, newest: newest.data?.total ?? 0, action: actionCollection.data?.total ?? 0,
+      popular: popular.data?.total ?? 0, action: actionCollection.data?.total ?? 0,
       adventure: adventureCollection.data?.total ?? 0, cyberpunk: cyberpunkCollection.data?.total ?? 0,
     };
     setFeaturedPages(current => {
@@ -113,7 +111,7 @@ export default function Home() {
       });
       return changed ? next : current;
     });
-  }, [popular.data?.total, newest.data?.total, actionCollection.data?.total, adventureCollection.data?.total, cyberpunkCollection.data?.total]);
+  }, [popular.data?.total, actionCollection.data?.total, adventureCollection.data?.total, cyberpunkCollection.data?.total]);
   const clearFilters = () => { setSearch(""); setCategory(""); setResolution(""); setDevice(""); setMood(""); setColor(""); setSort("newest"); setPage(1); };
   const colorsLabel = colors.find(item => item.value === color)?.label;
   const goSuggestion = (item: { label: string; type: "wallpaper" | "game" | "tag" }) => {
@@ -157,9 +155,8 @@ export default function Home() {
         <div className="game-strip">{games.data.map(game => game.gameTitle && <Link key={game.gameTitle} className="game-chip" href={`/games/${slugifyGame(game.gameTitle)}`}><span className="game-chip-icon"><Gamepad2 size={17} /></span><span><b>{game.gameTitle}</b><small>{game.wallpaperCount.toLocaleString("fa-IR")} تصویر</small></span><ArrowUpLeft size={15} /></Link>)}</div>
       </section> : null}
 
-      {!hasFilters && (newest.data?.total || popular.data?.total) ? <div className="featured-sections">
+      {!hasFilters && (popular.data?.total || actionCollection.data?.total || adventureCollection.data?.total || cyberpunkCollection.data?.total) ? <div className="featured-sections">
         {popular.data?.total ? <section className="discovery-section"><div className="section-heading"><div><span className="section-kicker">بر اساس بازدید کاربران</span><h2>محبوب‌ترین‌ها</h2></div><Flame size={19} color="#ff9b7b" /></div><div className="wallpaper-grid featured-grid" aria-busy={popular.isFetching}>{popularPage.items.map(item => <WallpaperCard key={item.id} wallpaper={item} compact presentation="gallery" showActions={false} />)}</div><CollectionPager section="محبوب‌ترین‌ها" page={popularPage.page} totalPages={popularPage.totalPages} isFetching={popular.isFetching} onChange={direction => turnFeaturedPage("popular", direction, popularPage.totalPages)} /></section> : null}
-        {newest.data?.total ? <section className="discovery-section"><div className="section-heading"><div><span className="section-kicker">تازه‌رسیده‌ها</span><h2>تازه‌رسیده‌ها</h2></div><Clock3 size={19} color="#bd92ff" /></div><div className="wallpaper-grid featured-grid" aria-busy={newest.isFetching}>{newestPage.items.map(item => <WallpaperCard key={item.id} wallpaper={item} compact presentation="gallery" showActions={false} />)}</div><CollectionPager section="تازه‌رسیده‌ها" page={newestPage.page} totalPages={newestPage.totalPages} isFetching={newest.isFetching} onChange={direction => turnFeaturedPage("newest", direction, newestPage.totalPages)} /></section> : null}
         {actionCollection.data?.total ? <section className="discovery-section"><div className="section-heading"><div><span className="section-kicker">مجموعهٔ منتخب</span><h2>ضرب‌آهنگ اکشن</h2></div><Gamepad2 size={19} color="#ff9b7b" /></div><div className="wallpaper-grid featured-grid" aria-busy={actionCollection.isFetching}>{actionPage.items.map(item => <WallpaperCard key={item.id} wallpaper={item} compact presentation="gallery" showActions={false} />)}</div><CollectionPager section="اکشن" page={actionPage.page} totalPages={actionPage.totalPages} isFetching={actionCollection.isFetching} onChange={direction => turnFeaturedPage("action", direction, actionPage.totalPages)} /></section> : null}
         {adventureCollection.data?.total ? <section className="discovery-section"><div className="section-heading"><div><span className="section-kicker">مجموعهٔ منتخب</span><h2>سفر به دنیاهای ماجراجویی</h2></div><Sparkles size={19} color="#bd92ff" /></div><div className="wallpaper-grid featured-grid" aria-busy={adventureCollection.isFetching}>{adventurePage.items.map(item => <WallpaperCard key={item.id} wallpaper={item} compact presentation="gallery" showActions={false} />)}</div><CollectionPager section="ماجراجویی" page={adventurePage.page} totalPages={adventurePage.totalPages} isFetching={adventureCollection.isFetching} onChange={direction => turnFeaturedPage("adventure", direction, adventurePage.totalPages)} /></section> : null}
         {cyberpunkCollection.data?.total ? <section className="discovery-section"><div className="section-heading"><div><span className="section-kicker">مجموعهٔ منتخب</span><h2>نورهای سایبرپانک</h2></div><Palette size={19} color="#74d4ff" /></div><div className="wallpaper-grid featured-grid" aria-busy={cyberpunkCollection.isFetching}>{cyberpunkPage.items.map(item => <WallpaperCard key={item.id} wallpaper={item} compact presentation="gallery" showActions={false} />)}</div><CollectionPager section="سایبرپانک" page={cyberpunkPage.page} totalPages={cyberpunkPage.totalPages} isFetching={cyberpunkCollection.isFetching} onChange={direction => turnFeaturedPage("cyberpunk", direction, cyberpunkPage.totalPages)} /></section> : null}
