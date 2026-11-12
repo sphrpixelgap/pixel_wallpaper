@@ -1,6 +1,5 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { createHash } from "node:crypto";
 import { AdminAccount, InsertAdminAccount, InsertUser, InsertWallpaper, InsertWallpaperVariant, InsertWallpaperRequest, User, adminAccounts, adminActivityLogs, adminAuthLimits, adminSessions, clientRequestLimits, users, wallpaperCategories, wallpaperIssueReports, wallpaperRequests, wallpaperVariants, wallpapers, siteSettings } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { redactWallpaperIssueDetails } from "./privacy";
@@ -129,43 +128,6 @@ export async function listWallpapers(filters: WallpaperFilters = {}) {
     : filters.sort === "size" ? [desc(wallpapers.fileSize), desc(wallpapers.createdAt)] as const
     : [desc(wallpapers.createdAt)] as const;
   return db.select().from(wallpapers).where(wallpaperWhere(db, filters)).orderBy(...ordering).limit(Math.min(Math.max(filters.limit ?? 120, 1), 120));
-}
-
-export async function publishAllPendingWallpapers() {
-  const db = await getDb();
-  if (!db) throw new Error("Database is not available");
-  const result = await db.update(wallpapers).set({ publicationStatus: "published" }).where(and(eq(wallpapers.isArchived, 0), eq(wallpapers.publicationStatus, "pending")));
-  return Number(result[0]?.affectedRows ?? 0);
-}
-
-export async function removeExactDuplicateWallpapersByContent() {
-  const db = await getDb();
-  if (!db) throw new Error("Database is not available");
-  const rows = await db.select({ id: wallpapers.id, imageUrl: wallpapers.imageUrl, createdAt: wallpapers.createdAt }).from(wallpapers).where(eq(wallpapers.isArchived, 0)).orderBy(asc(wallpapers.createdAt), asc(wallpapers.id));
-  const hashes = new Map<string, number[]>();
-  let checked = 0;
-  for (let i = 0; i < rows.length; i += 8) {
-    const batch = await Promise.all(rows.slice(i, i + 8).map(async row => {
-      try {
-        const response = await fetch(row.imageUrl, { signal: AbortSignal.timeout(20000) });
-        if (!response.ok) return null;
-        const hash = createHash("sha256").update(Buffer.from(await response.arrayBuffer())).digest("hex");
-        checked++;
-        return [hash, row.id] as const;
-      } catch { return null; }
-    }));
-    for (const item of batch) if (item) hashes.set(item[0], [...(hashes.get(item[0]) ?? []), item[1]]);
-  }
-  const duplicateIds = [...hashes.values()].filter(ids => ids.length > 1).flatMap(ids => ids.slice(1));
-  // These records were confirmed unavailable with three independent retries against ImageKit.
-  const confirmedUnavailableIds = [109, 124, 130, 924, 927, 1104, 1110];
-  const unavailableIds = rows.filter(row => confirmedUnavailableIds.includes(row.id)).map(row => row.id);
-  const removeIds = [...new Set([...duplicateIds, ...unavailableIds])];
-  if (removeIds.length) {
-    await db.delete(wallpaperIssueReports).where(inArray(wallpaperIssueReports.wallpaperId, removeIds));
-    await db.delete(wallpapers).where(inArray(wallpapers.id, removeIds));
-  }
-  return { total: rows.length, checked, duplicateRowsRemoved: duplicateIds.length, unavailableRowsRemoved: unavailableIds.length };
 }
 
 export async function listWallpapersPage(filters: WallpaperFilters, page: number, pageSize = 24) {
