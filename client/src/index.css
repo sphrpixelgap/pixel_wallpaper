@@ -330,3 +330,100 @@
   .main-nav { gap: 3px; }
   .main-nav a { padding: 11px 12px; font-size: 13px; }
 }
+
+
+/* Smooth micro-interactions and a lighter, more minimal header */
+:root {
+  --motion-smooth: cubic-bezier(.2, .75, .25, 1);
+}
+.button-primary,
+.button-secondary,
+.account-button,
+.install-app-button,
+.telegram-button,
+.category-chip,
+.game-chip,
+.main-nav a {
+  transition-timing-function: var(--motion-smooth);
+}
+.button-primary,
+.button-secondary {
+  position: relative;
+  overflow: hidden;
+  transition: transform .28s var(--motion-smooth), box-shadow .28s var(--motion-smooth),
+    background .28s var(--motion-smooth), border-color .28s var(--motion-smooth), color .28s var(--motion-smooth);
+}
+.button-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 25%, rgba(255,255,255,.2) 48%, transparent 70%);
+  transform: translateX(-125%);
+  transition: transform .65s var(--motion-smooth);
+  pointer-events: none;
+}
+.button-primary:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.015);
+  box-shadow: 0 12px 30px rgba(79, 70, 229, .34);
+}
+.button-primary:hover:not(:disabled)::after { transform: translateX(125%); }
+.button-primary:active:not(:disabled),
+.button-secondary:active:not(:disabled) { transform: translateY(0) scale(.985); }
+.button-secondary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(3, 7, 18, .22);
+}
+.button-primary:disabled,
+.button-secondary:disabled { cursor: not-allowed; }
+
+.topbar { height: 68px; }
+.topbar-inner { width: min(1160px, calc(100% - 56px)); gap: 20px; }
+.brand { min-width: auto; gap: 9px; }
+.brand img {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  box-shadow: 0 0 18px rgba(99, 102, 241, .18);
+}
+.brand-copy strong { font-size: 15px; letter-spacing: -.035em; }
+.brand-copy small { margin-top: 2px; font-size: 9px; color: #99a3b3; }
+.main-nav { gap: 1px; }
+.main-nav a {
+  gap: 6px;
+  padding: 8px 10px;
+  color: #aeb8c7;
+  font-size: 11px;
+  letter-spacing: -.01em;
+}
+.main-nav a:hover,
+.main-nav a.active {
+  background: rgba(148, 163, 184, .065);
+  color: #f1f5f9;
+}
+.main-nav a:hover svg { opacity: 1; transform: translateY(-1px); }
+.main-nav svg { transition: transform .25s var(--motion-smooth), opacity .25s var(--motion-smooth); }
+.telegram-button { width: 32px; height: 32px; flex: none; }
+.telegram-button:hover { transform: translateY(-1px); }
+.mobile-menu-button span { transition: transform .25s var(--motion-smooth), opacity .2s ease; }
+
+@media (max-width: 900px) {
+  .topbar-inner { width: calc(100% - 40px); gap: 12px; }
+  .main-nav a { padding-inline: 7px; font-size: 10px; }
+}
+@media (max-width: 650px) {
+  .topbar { height: 62px; }
+  .topbar-inner { width: calc(100% - 30px); gap: 10px; }
+  .brand img { width: 35px; height: 35px; }
+  .brand-copy strong { font-size: 14px; }
+  .brand-copy small { font-size: 8px; }
+  .main-nav { top: 61px; gap: 2px; padding: 10px 15px 14px; }
+  .main-nav a { padding: 10px 11px; font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button-primary::after { display: none; }
+  .button-primary:hover:not(:disabled),
+  .button-secondary:hover:not(:disabled),
+  .button-primary:active:not(:disabled),
+  .button-secondary:active:not(:disabled),
+  .telegram-button:hover { transform: none; }
+}
