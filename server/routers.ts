@@ -250,6 +250,12 @@ export const appRouter = router({
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "حساب مدیر پیدا نشد." });
       return { success: true } as const;
     }),
+    deleteAccount: ownerProcedure.input(z.object({ id: adminAccountIdInput })).mutation(async ({ input, ctx }) => {
+      if (ctx.adminSession!.id === input.id) throw new TRPCError({ code: "FORBIDDEN", message: "حساب مدیرِ واردشده قابل حذف نیست." });
+      const deleted = await db.deleteManagedAdminAccount(input.id);
+      if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "حساب مدیر پیدا نشد." });
+      return { success: true } as const;
+    }),
   }),
   auth: router({
     me: publicProcedure.query(({ ctx }) => ctx.user ? { ...ctx.user, isAdmin: isSiteAdmin(ctx.user) } : null),

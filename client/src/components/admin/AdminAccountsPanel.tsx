@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { KeyRound, Shield, UserPlus, UserRoundCog, UserRoundX } from "lucide-react";
+import { KeyRound, Shield, Trash2, UserPlus, UserRoundCog, UserRoundX } from "lucide-react";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import AdminPermissionEditor from "@/components/admin/AdminPermissionEditor";
 import { NO_ADMIN_PERMISSIONS, type AdminPermissions } from "@shared/admin-permissions";
@@ -17,6 +17,7 @@ function ManagedAdminRow({
   onRename,
   onResetPassword,
   onToggle,
+  onDelete,
   onUpdatePermissions,
   busy,
 }: {
@@ -24,6 +25,7 @@ function ManagedAdminRow({
   onRename: (id: number, username: string) => Promise<void>;
   onResetPassword: (id: number, password: string) => Promise<void>;
   onToggle: (id: number, active: boolean) => Promise<void>;
+  onDelete: (id: number, username: string) => Promise<void>;
   onUpdatePermissions: (id: number, permissions: AdminPermissions) => Promise<void>;
   busy: boolean;
 }) {
@@ -60,6 +62,13 @@ function ManagedAdminRow({
     catch (cause) { setError(cause instanceof Error ? cause.message : "تغییر وضعیت حساب انجام نشد."); }
   }
 
+  async function removeAccount() {
+    const confirmed = window.confirm(`حساب مدیر «${account.username}» برای همیشه حذف شود؟ این کار برگشت‌ناپذیر است و همهٔ نشست‌های فعال او فوراً لغو می‌شوند.`);
+    if (!confirmed) return;
+    setError(""); setNotice("");
+    await onDelete(account.id, account.username);
+  }
+
   async function savePermissions() {
     setError(""); setNotice("");
     try {
@@ -85,6 +94,7 @@ function ManagedAdminRow({
         <div><input id={`admin-password-${account.id}`} type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" minLength={12} maxLength={128} placeholder="حداقل ۱۲ نویسه" required /><button className="button-secondary" type="submit" disabled={busy}>بازنشانی رمز</button></div>
       </form>
       <button className={account.isActive === 1 ? "admin-manager-toggle is-active" : "admin-manager-toggle"} type="button" disabled={busy} onClick={() => void toggle()}>{account.isActive === 1 ? <><UserRoundX size={15} /> غیرفعال‌کردن</> : <><Shield size={15} /> فعال‌کردن</>}</button>
+      <button className="admin-manager-delete" type="button" disabled={busy} onClick={() => void removeAccount()}><Trash2 size={15} /> حذف کامل حساب</button>
     </div>
     <AdminPermissionEditor idPrefix={`admin-permissions-${account.id}`} value={permissions} onChange={setPermissions} disabled={busy} />
     <button className="button-secondary admin-permission-save" type="button" onClick={() => void savePermissions()} disabled={busy || !permissionsChanged}>ذخیرهٔ دسترسی‌های مدیر</button>
@@ -102,6 +112,7 @@ export default function AdminAccountsPanel() {
   const renameAccount = trpc.adminAuth.renameAccount.useMutation();
   const resetAccountPassword = trpc.adminAuth.resetAccountPassword.useMutation();
   const setAccountActive = trpc.adminAuth.setAccountActive.useMutation();
+  const deleteAccount = trpc.adminAuth.deleteAccount.useMutation();
   const updateOwnerCredentials = trpc.adminAuth.updateOwnerCredentials.useMutation();
   const [ownerUsername, setOwnerUsername] = useState("");
   const [ownerPassword, setOwnerPassword] = useState("");
@@ -149,7 +160,7 @@ export default function AdminAccountsPanel() {
 
   const adminAccounts = accounts.data?.filter(account => account.role === "admin") ?? [];
   return <section className="admin-panel admin-managers-panel" dir="rtl">
-    <div className="admin-top"><div><h2><UserRoundCog size={19} style={{ verticalAlign: "middle", marginLeft: 8 }} />مدیریت مدیران</h2><p>فقط مالک می‌تواند حساب مدیر بسازد، رمز را بازنشانی یا دسترسی را لغو کند.</p></div></div>
+    <div className="admin-top"><div><h2><UserRoundCog size={19} style={{ verticalAlign: "middle", marginLeft: 8 }} />مدیریت مدیران</h2><p>فقط مالک می‌تواند حساب مدیر بسازد، اطلاعات ورود و دسترسی را مدیریت کند یا حساب را به‌طور کامل حذف کند.</p></div></div>
     {error && <div className="notice-box" role="alert">{error}</div>}
     {success && <p className="success-text" role="status">{success}</p>}
     <div className="admin-managers-grid">
@@ -176,10 +187,11 @@ export default function AdminAccountsPanel() {
     </div>
     <div className="admin-manager-list-heading"><h3>مدیران ثبت‌شده</h3><span>{adminAccounts.length.toLocaleString("fa-IR")} حساب</span></div>
     {accounts.isLoading ? <div className="loading-line"><span className="spinner" /> در حال دریافت حساب‌ها...</div> : accounts.error ? <div className="notice-box" role="alert">دریافت مدیران انجام نشد: {accounts.error.message}</div> : adminAccounts.length ? <div className="admin-manager-list">
-      {adminAccounts.map(account => <ManagedAdminRow key={account.id} account={account} busy={busyId === account.id || renameAccount.isPending || resetAccountPassword.isPending || setAccountActive.isPending || updateAccountPermissions.isPending}
+      {adminAccounts.map(account => <ManagedAdminRow key={account.id} account={account} busy={busyId === account.id || renameAccount.isPending || resetAccountPassword.isPending || setAccountActive.isPending || deleteAccount.isPending || updateAccountPermissions.isPending}
         onRename={(id, username) => withBusy(id, async () => { await renameAccount.mutateAsync({ id, username }); })}
         onResetPassword={(id, password) => withBusy(id, async () => { await resetAccountPassword.mutateAsync({ id, password }); })}
         onUpdatePermissions={(id, permissions) => withBusy(id, async () => { await updateAccountPermissions.mutateAsync({ id, permissions }); })}
+        onDelete={(id, username) => withBusy(id, async () => { await deleteAccount.mutateAsync({ id }); setSuccess(`حساب مدیر «${username}» به‌طور کامل حذف شد و نشست‌هایش لغو شدند.`); })}
         onToggle={(id, active) => withBusy(id, async () => { await setAccountActive.mutateAsync({ id, active }); })} />)}
     </div> : <div className="empty-state"><div className="empty-icon"><UserPlus size={22} /></div><h3>هنوز مدیر دیگری اضافه نشده</h3><p>از فرم بالا یک حساب مستقل برای مدیر جدید بسازید.</p></div>}
   </section>;

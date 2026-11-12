@@ -983,6 +983,16 @@ export async function setManagedAdminActive(accountId: number, isActive: boolean
   });
 }
 
+export async function deleteManagedAdminAccount(accountId: number): Promise<boolean> {
+  const database = await getDb();
+  if (!database) throw new Error("Database is not available");
+  const result = await database.delete(adminAccounts).where(and(
+    eq(adminAccounts.id, accountId),
+    eq(adminAccounts.role, "admin"),
+  ));
+  return Number(result[0]?.affectedRows ?? 0) === 1;
+}
+
 export async function renameManagedAdminAccount(accountId: number, username: string, now: Date): Promise<boolean> {
   const database = await getDb();
   if (!database) throw new Error("Database is not available");
