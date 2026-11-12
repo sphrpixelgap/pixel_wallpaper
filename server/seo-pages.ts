@@ -74,6 +74,9 @@ function wallpaperCard(wallpaper: {
 
 type FeaturedPreview = { url: string; alt: string; markup: string };
 let featuredPreviewCache: { expiresAt: number; value: FeaturedPreview } | undefined;
+const HOME_PAGE_CACHE_MS = 20_000;
+let homePageCache: { expiresAt: number; value: SeoPage } | undefined;
+let homePagePending: Promise<SeoPage> | undefined;
 async function getFeaturedPreview(): Promise<FeaturedPreview> {
   if (featuredPreviewCache && featuredPreviewCache.expiresAt > Date.now()) return featuredPreviewCache.value;
   let value: FeaturedPreview = {
@@ -179,26 +182,40 @@ export async function renderSeoPage(requestUrl: string): Promise<SeoPage> {
   }
 
   if (pathname === "/") {
+    const cacheable = !noindexQuery;
+    if (cacheable && homePageCache && homePageCache.expiresAt > Date.now()) return homePageCache.value;
+    if (cacheable && homePagePending) return homePagePending;
+    const renderHomePage = async (): Promise<SeoPage> => {
+      try {
+        const connectedDb = await getDb();
+        if (!connectedDb) throw new Error("Database is unavailable");
+        const [settings, wallpapers, games] = await Promise.all([
+          getSiteSettings(),
+          listWallpapers({ q: parsed.searchParams.get("q")?.slice(0, 120) || undefined, sort: "newest", limit: 12 }),
+          listGames(),
+        ]);
+        const heading = `${settings.heroTitle} ${settings.heroAccentTitle}`.trim();
+        const image = wallpapers[0] ? safeWallpaperImage(wallpapers[0].thumbnailUrl) ?? safeWallpaperImage(wallpapers[0].imageUrl) : undefined;
+        const body = main(`<header class="page-header"><span class="eyebrow">${escapeHtml(settings.heroEyebrow)}</span><h1>${escapeHtml(shorten(heading, 80))}</h1><p>${escapeHtml(settings.heroSubtitle)}</p><p><a class="button-primary" href="#seo-wallpapers">مرور والپیپرهای گیمینگ</a> <a class="button-secondary" href="/request">درخواست والپیپر</a></p></header>${gameListMarkup(games)}<section id="seo-wallpapers" class="seo-link-section"><h2>والپیپرهای گیمینگ تازه</h2><p>تصاویر تازهٔ گنجینه را برای دسکتاپ و موبایل ببین و نسخهٔ مناسب را از صفحهٔ هر والپیپر دانلود کن.</p>${wallpapers.length ? `<div class="wallpaper-grid">${wallpapers.map(wallpaperCard).join("")}</div>` : "<p>والپیپر تازه‌ای در دسترس نیست؛ بعداً دوباره سر بزن.</p>"}</section>${collectionListMarkup()}`);
+        return page({
+          title: settings.seoTitle || DEFAULT_SITE_SETTINGS.seoTitle,
+          description: settings.seoDescription || DEFAULT_SITE_SETTINGS.seoDescription,
+          canonical: canonical("/"), robots: noindexQuery ? "noindex, follow" : "index, follow",
+          ogImage: image ?? settings.logoUrl ?? LOGO_IMAGE, ogImageAlt: "والپیپرهای تازهٔ گیمینگ در پیکسل والپیپر", body,
+        });
+      } catch (error) {
+        console.error("[SEO] Home page rendering failed", error instanceof Error ? error.name : "UnknownError");
+        return page({ status: 503, title: DEFAULT_SITE_SETTINGS.seoTitle, description: DEFAULT_SITE_SETTINGS.seoDescription, robots: "noindex, follow", body: main(`<header class="page-header"><h1>پیکسل والپیپر</h1><p>دریافت محتوای گنجینه موقتاً ممکن نیست. کمی بعد دوباره تلاش کنید.</p></header>`) });
+      }
+    };
+    if (!cacheable) return renderHomePage();
+    homePagePending = renderHomePage();
     try {
-      const connectedDb = await getDb();
-      if (!connectedDb) throw new Error("Database is unavailable");
-      const [settings, wallpapers, games] = await Promise.all([
-        getSiteSettings(),
-        listWallpapers({ q: parsed.searchParams.get("q")?.slice(0, 120) || undefined, sort: "newest", limit: 12 }),
-        listGames(),
-      ]);
-      const heading = `${settings.heroTitle} ${settings.heroAccentTitle}`.trim();
-      const image = wallpapers[0] ? safeWallpaperImage(wallpapers[0].thumbnailUrl) ?? safeWallpaperImage(wallpapers[0].imageUrl) : undefined;
-      const body = main(`<header class="page-header"><span class="eyebrow">${escapeHtml(settings.heroEyebrow)}</span><h1>${escapeHtml(shorten(heading, 80))}</h1><p>${escapeHtml(settings.heroSubtitle)}</p><p><a class="button-primary" href="#seo-wallpapers">مرور والپیپرهای گیمینگ</a> <a class="button-secondary" href="/request">درخواست والپیپر</a></p></header>${gameListMarkup(games)}<section id="seo-wallpapers" class="seo-link-section"><h2>والپیپرهای گیمینگ تازه</h2><p>تصاویر تازهٔ گنجینه را برای دسکتاپ و موبایل ببین و نسخهٔ مناسب را از صفحهٔ هر والپیپر دانلود کن.</p>${wallpapers.length ? `<div class="wallpaper-grid">${wallpapers.map(wallpaperCard).join("")}</div>` : "<p>والپیپر تازه‌ای در دسترس نیست؛ بعداً دوباره سر بزن.</p>"}</section>${collectionListMarkup()}`);
-      return page({
-        title: settings.seoTitle || DEFAULT_SITE_SETTINGS.seoTitle,
-        description: settings.seoDescription || DEFAULT_SITE_SETTINGS.seoDescription,
-        canonical: canonical("/"), robots: noindexQuery ? "noindex, follow" : "index, follow",
-        ogImage: image ?? settings.logoUrl ?? LOGO_IMAGE, ogImageAlt: "والپیپرهای تازهٔ گیمینگ در پیکسل والپیپر", body,
-      });
-    } catch (error) {
-      console.error("[SEO] Home page rendering failed", error instanceof Error ? error.name : "UnknownError");
-      return page({ status: 503, title: DEFAULT_SITE_SETTINGS.seoTitle, description: DEFAULT_SITE_SETTINGS.seoDescription, robots: "noindex, follow", body: main(`<header class="page-header"><h1>پیکسل والپیپر</h1><p>دریافت محتوای گنجینه موقتاً ممکن نیست. کمی بعد دوباره تلاش کنید.</p></header>`) });
+      const rendered = await homePagePending;
+      if (rendered.status === 200) homePageCache = { expiresAt: Date.now() + HOME_PAGE_CACHE_MS, value: rendered };
+      return rendered;
+    } finally {
+      homePagePending = undefined;
     }
   }
 

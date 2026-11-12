@@ -16,7 +16,11 @@ async function sendSeoPage(req: Request, res: Response, templatePath: string, tr
   const template = await fs.promises.readFile(templatePath, "utf-8");
   const document = injectSeoPage(template, result);
   const html = transform ? await transform(req.originalUrl, document) : document;
-  res.status(result.status).set({ "Content-Type": "text/html; charset=utf-8" }).send(html);
+  const headers: Record<string, string> = { "Content-Type": "text/html; charset=utf-8" };
+  if ((req.method === "GET" || req.method === "HEAD") && req.path === "/" && !req.originalUrl.includes("?")) {
+    headers["Cache-Control"] = "public, max-age=0, s-maxage=20, stale-while-revalidate=60";
+  }
+  res.status(result.status).set(headers).send(html);
   return true;
 }
 
