@@ -125,7 +125,7 @@ export const wallpaperIssueReports = mysqlTable("wallpaper_issue_reports", {
   id: int("id").autoincrement().primaryKey(),
   wallpaperId: int("wallpaperId").notNull(),
   wallpaperTitle: varchar("wallpaperTitle", { length: 180 }).notNull(),
-  reason: mysqlEnum("reason", ["download", "quality", "wrong_info", "duplicate", "other"]).notNull(),
+  reason: mysqlEnum("reason", ["download", "quality", "wrong_info", "duplicate", "broken", "irrelevant", "other"]).notNull(),
   details: varchar("details", { length: 800 }),
   status: mysqlEnum("status", ["new", "reviewed", "resolved", "dismissed"]).default("new").notNull(),
   clientHash: varchar("clientHash", { length: 64 }).notNull(),
@@ -135,6 +135,16 @@ export const wallpaperIssueReports = mysqlTable("wallpaper_issue_reports", {
   statusCreatedIdx: index("wallpaper_issue_reports_status_created_idx").on(table.status, table.createdAt),
   wallpaperCreatedIdx: index("wallpaper_issue_reports_wallpaper_created_idx").on(table.wallpaperId, table.createdAt),
   clientCreatedIdx: index("wallpaper_issue_reports_client_created_idx").on(table.clientHash, table.createdAt),
+}));
+
+export const wallpaperLikes = mysqlTable("wallpaper_likes", {
+  id: int("id").autoincrement().primaryKey(),
+  wallpaperId: int("wallpaperId").notNull(),
+  clientHash: varchar("clientHash", { length: 64 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({
+  wallpaperClientUniqueIdx: uniqueIndex("wallpaper_likes_wallpaper_client_uq").on(table.wallpaperId, table.clientHash),
+  wallpaperCreatedIdx: index("wallpaper_likes_wallpaper_created_idx").on(table.wallpaperId, table.createdAt),
 }));
 
 export const adminActivityLogs = mysqlTable("admin_activity_logs", {
@@ -202,6 +212,8 @@ export const clientRequestLimits = mysqlTable("client_request_limits", {
   viewAttemptCount: int("viewAttemptCount").default(0).notNull(),
   reportWindowStartedAt: timestamp("reportWindowStartedAt"),
   reportAttemptCount: int("reportAttemptCount").default(0).notNull(),
+  likeWindowStartedAt: timestamp("likeWindowStartedAt"),
+  likeAttemptCount: int("likeAttemptCount").default(0).notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => ({
   updatedAtIdx: index("client_request_limits_updated_at_idx").on(table.updatedAt),

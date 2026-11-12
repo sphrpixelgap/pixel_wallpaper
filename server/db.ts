@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, like, lt, lte, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { AdminAccount, InsertAdminAccount, InsertUser, InsertWallpaper, InsertWallpaperVariant, InsertWallpaperRequest, User, adminAccounts, adminActivityLogs, adminAuthLimits, adminSessions, clientRequestLimits, users, wallpaperCategories, wallpaperIssueReports, wallpaperRequests, wallpaperVariants, wallpapers, siteSettings, communityWallpaperSubmissions, imageKitCleanupJobs } from "../drizzle/schema";
+import { AdminAccount, InsertAdminAccount, InsertUser, InsertWallpaper, InsertWallpaperVariant, InsertWallpaperRequest, User, adminAccounts, adminActivityLogs, adminAuthLimits, adminSessions, clientRequestLimits, users, wallpaperCategories, wallpaperIssueReports, wallpaperLikes, wallpaperRequests, wallpaperVariants, wallpapers, siteSettings, communityWallpaperSubmissions, imageKitCleanupJobs } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { redactWallpaperIssueDetails } from "./privacy";
 import { DEFAULT_SITE_SETTINGS, type SiteSettingsValues } from "../shared/site-settings";
@@ -12,6 +12,8 @@ import {
   REQUEST_CHECK_LOCK_TTL_MS,
   REQUEST_LOOKUP_LIMIT,
   REQUEST_LOOKUP_WINDOW_MS,
+  WALLPAPER_LIKE_LIMIT,
+  WALLPAPER_LIKE_WINDOW_MS,
   WALLPAPER_REPORT_LIMIT,
   WALLPAPER_REPORT_WINDOW_MS,
   WALLPAPER_VIEW_LIMIT,
@@ -659,12 +661,12 @@ export async function releaseWallpaperRequestCheck(clientHash: string, lockToken
   ));
 }
 
-async function consumeClientRateWindow(clientHash: string, now: Date, bucket: "lookup" | "view" | "report") {
+async function consumeClientRateWindow(clientHash: string, now: Date, bucket: "lookup" | "view" | "report" | "like") {
   const db = await ensureClientRequestLimitRow(clientHash);
-  const windowColumn = bucket === "lookup" ? clientRequestLimits.lookupWindowStartedAt : bucket === "view" ? clientRequestLimits.viewWindowStartedAt : clientRequestLimits.reportWindowStartedAt;
-  const countColumn = bucket === "lookup" ? clientRequestLimits.lookupAttemptCount : bucket === "view" ? clientRequestLimits.viewAttemptCount : clientRequestLimits.reportAttemptCount;
-  const windowMs = bucket === "lookup" ? REQUEST_LOOKUP_WINDOW_MS : bucket === "view" ? WALLPAPER_VIEW_WINDOW_MS : WALLPAPER_REPORT_WINDOW_MS;
-  const limit = bucket === "lookup" ? REQUEST_LOOKUP_LIMIT : bucket === "view" ? WALLPAPER_VIEW_LIMIT : WALLPAPER_REPORT_LIMIT;
+  const windowColumn = bucket === "lookup" ? clientRequestLimits.lookupWindowStartedAt : bucket === "view" ? clientRequestLimits.viewWindowStartedAt : bucket === "report" ? clientRequestLimits.reportWindowStartedAt : clientRequestLimits.likeWindowStartedAt;
+  const countColumn = bucket === "lookup" ? clientRequestLimits.lookupAttemptCount : bucket === "view" ? clientRequestLimits.viewAttemptCount : bucket === "report" ? clientRequestLimits.reportAttemptCount : clientRequestLimits.likeAttemptCount;
+  const windowMs = bucket === "lookup" ? REQUEST_LOOKUP_WINDOW_MS : bucket === "view" ? WALLPAPER_VIEW_WINDOW_MS : bucket === "report" ? WALLPAPER_REPORT_WINDOW_MS : WALLPAPER_LIKE_WINDOW_MS;
+  const limit = bucket === "lookup" ? REQUEST_LOOKUP_LIMIT : bucket === "view" ? WALLPAPER_VIEW_LIMIT : bucket === "report" ? WALLPAPER_REPORT_LIMIT : WALLPAPER_LIKE_LIMIT;
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const [snapshot] = await db.select({ windowStartedAt: windowColumn, attemptCount: countColumn })
@@ -680,7 +682,9 @@ async function consumeClientRateWindow(clientHash: string, now: Date, bucket: "l
       ? { lookupWindowStartedAt: next.windowStartedAt, lookupAttemptCount: next.attemptCount, updatedAt: now }
       : bucket === "view"
         ? { viewWindowStartedAt: next.windowStartedAt, viewAttemptCount: next.attemptCount, updatedAt: now }
-        : { reportWindowStartedAt: next.windowStartedAt, reportAttemptCount: next.attemptCount, updatedAt: now };
+        : bucket === "report"
+          ? { reportWindowStartedAt: next.windowStartedAt, reportAttemptCount: next.attemptCount, updatedAt: now }
+          : { likeWindowStartedAt: next.windowStartedAt, likeAttemptCount: next.attemptCount, updatedAt: now };
     const result = await db.update(clientRequestLimits).set(values).where(and(
       eq(clientRequestLimits.clientHash, clientHash),
       windowCondition,
@@ -704,6 +708,10 @@ export async function consumeWallpaperViewAttempt(clientHash: string, now: Date)
 
 export async function consumeWallpaperReportAttempt(clientHash: string, now: Date) {
   return consumeClientRateWindow(clientHash, now, "report");
+}
+
+export async function consumeWallpaperLikeAttempt(clientHash: string, now: Date) {
+  return consumeClientRateWindow(clientHash, now, "like");
 }
 
 export async function getPublicRequestStatus(trackingCode: string) {
@@ -1318,7 +1326,7 @@ export async function consumeWallpaperIssueReportAttempt(clientHash: string, now
 }
 
 export async function createWallpaperIssueReport(input: {
-  wallpaperId: number; reason: "download" | "quality" | "wrong_info" | "duplicate" | "other"; details: string | null; clientHash: string; createdAt: Date;
+  wallpaperId: number; reason: "download" | "quality" | "wrong_info" | "duplicate" | "broken" | "irrelevant" | "other"; details: string | null; clientHash: string; createdAt: Date;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
@@ -1326,6 +1334,35 @@ export async function createWallpaperIssueReport(input: {
   if (!wallpaper) return null;
   const result = await db.insert(wallpaperIssueReports).values({ ...input, details: redactWallpaperIssueDetails(input.details), wallpaperTitle: wallpaper.title });
   return Number(result[0].insertId);
+}
+
+export async function getWallpaperLikeSummary(wallpaperId: number, clientHash: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [wallpaper] = await db.select({ id: wallpapers.id }).from(wallpapers).where(and(
+    eq(wallpapers.id, wallpaperId), eq(wallpapers.isArchived, 0), eq(wallpapers.publicationStatus, "published"),
+  )).limit(1);
+  if (!wallpaper) return null;
+  const [[totals], [viewerVote]] = await Promise.all([
+    db.select({ total: count() }).from(wallpaperLikes).where(eq(wallpaperLikes.wallpaperId, wallpaperId)),
+    db.select({ id: wallpaperLikes.id }).from(wallpaperLikes).where(and(
+      eq(wallpaperLikes.wallpaperId, wallpaperId), eq(wallpaperLikes.clientHash, clientHash),
+    )).limit(1),
+  ]);
+  return { likeCount: Number(totals?.total ?? 0), liked: Boolean(viewerVote) };
+}
+
+export async function likeWallpaper(wallpaperId: number, clientHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const [wallpaper] = await db.select({ id: wallpapers.id }).from(wallpapers).where(and(
+    eq(wallpapers.id, wallpaperId), eq(wallpapers.isArchived, 0), eq(wallpapers.publicationStatus, "published"),
+  )).limit(1);
+  if (!wallpaper) return null;
+  await db.insert(wallpaperLikes).values({ wallpaperId, clientHash }).onDuplicateKeyUpdate({
+    set: { createdAt: sql`${wallpaperLikes.createdAt}` },
+  });
+  return getWallpaperLikeSummary(wallpaperId, clientHash);
 }
 
 export async function listWallpaperIssueReports(page: number, status?: "new" | "reviewed" | "resolved" | "dismissed", pageSize = 20) {

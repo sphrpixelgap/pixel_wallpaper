@@ -3,7 +3,7 @@ import { Bug, ChevronLeft, ChevronRight, MessageSquareWarning } from "lucide-rea
 import { trpc } from "@/lib/trpc";
 
 const PAGE_SIZE = 20;
-const reasonLabels = { download: "مشکل دانلود", quality: "کیفیت تصویر", wrong_info: "اطلاعات نادرست", duplicate: "تصویر تکراری", other: "سایر" } as const;
+const reasonLabels = { download: "مشکل دانلود", quality: "کیفیت تصویر", wrong_info: "اطلاعات نادرست", duplicate: "تصویر تکراری", broken: "تصویر خراب یا بازنشدنی", irrelevant: "نامرتبط با عنوان یا دسته", other: "سایر" } as const;
 const statusLabels = { new: "جدید", reviewed: "بررسی‌شده", resolved: "حل‌شده", dismissed: "نادیده‌گرفته‌شده" } as const;
 
 type Status = keyof typeof statusLabels;

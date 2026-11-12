@@ -431,3 +431,5 @@
 html.app-js #seo-fallback { display: none; }
 html.app-js #root:empty { min-height: 100vh; display: grid; place-items: center; }
 html.app-js #root:empty::before { content: "در حال بارگذاری سایت…"; padding: 12px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--muted); font-size: 12px; }
+
+.wallpaper-like{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:8px 11px;border:1px solid #8b7cf633;border-radius:10px;background:#7c6cf60c;color:#c9c2ff;font:inherit;font-size:11px;cursor:pointer;transition:transform .22s var(--motion-smooth),background .22s,border-color .22s,color .22s}.wallpaper-like:hover:not(:disabled){transform:translateY(-1px);border-color:#8b7cf677;background:#7c6cf61a;color:#fff}.wallpaper-like.is-liked{border-color:#8b7cf655;background:#7c6cf61c;color:#ddd8ff}.wallpaper-like b{min-width:20px;padding:2px 6px;border-radius:999px;background:#ffffff0c;font-size:10px;text-align:center}.wallpaper-like:disabled{opacity:.65;cursor:not-allowed}

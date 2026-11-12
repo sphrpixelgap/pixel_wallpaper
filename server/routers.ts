@@ -123,7 +123,7 @@ const wallpaperRequestFields = z.object({
 });
 const wallpaperIssueReportFields = z.object({
   wallpaperId: z.number().int().positive(),
-  reason: z.enum(["download", "quality", "wrong_info", "duplicate", "other"]),
+  reason: z.enum(["download", "quality", "wrong_info", "duplicate", "broken", "irrelevant", "other"]),
   details: z.string().trim().max(800).optional().nullable(),
   website: z.string().max(200).optional(),
 });
@@ -421,6 +421,25 @@ export const appRouter = router({
       }
       await db.recordWallpaperView(input.id);
       return { success: true };
+    }),
+  }),
+  wallpaperReactions: router({
+    summary: publicProcedure.input(z.object({ wallpaperId: z.number().int().positive() })).query(async ({ input, ctx }) => {
+      const summary = await db.getWallpaperLikeSummary(input.wallpaperId, requestClientHash(ctx.req));
+      if (!summary) throw new TRPCError({ code: "NOT_FOUND", message: "والپیپر پیدا نشد." });
+      return summary;
+    }),
+    like: publicProcedure.input(z.object({ wallpaperId: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
+      const clientHash = requestClientHash(ctx.req);
+      const current = await db.getWallpaperLikeSummary(input.wallpaperId, clientHash);
+      if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "والپیپر پیدا نشد." });
+      if (current.liked) return current;
+      if (!await db.consumeWallpaperLikeAttempt(clientHash, new Date())) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "تعداد پسندها برای امروز کافی است؛ فردا دوباره تلاش کنید." });
+      }
+      const summary = await db.likeWallpaper(input.wallpaperId, clientHash);
+      if (!summary) throw new TRPCError({ code: "NOT_FOUND", message: "این والپیپر دیگر در دسترس نیست." });
+      return summary;
     }),
   }),
   wallpaperReports: router({

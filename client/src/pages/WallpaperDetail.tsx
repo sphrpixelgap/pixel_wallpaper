@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { ArrowLeft, ArrowRight, Copy, Download, Flag, Heart, Maximize2, Minus, MonitorDown, Plus, RotateCcw, Send, Share2, Smartphone } from "lucide-react";
+import { ArrowLeft, ArrowRight, Copy, Download, Flag, Heart, Maximize2, Minus, MonitorDown, Plus, RotateCcw, Send, Share2, Smartphone, ThumbsUp } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatBytes, ratioLabel, slugifyGame, toggleFavorite, useFavorites } from "@/lib/wallpaper";
 import WallpaperCard from "@/components/WallpaperCard";
@@ -27,12 +27,16 @@ export default function WallpaperDetail() {
   const [zoom, setZoom] = useState(1);
   const [shareMessage, setShareMessage] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
-  const [reportReason, setReportReason] = useState<"download" | "quality" | "wrong_info" | "duplicate" | "other">("download");
+  const [reportReason, setReportReason] = useState<"download" | "quality" | "wrong_info" | "duplicate" | "broken" | "irrelevant" | "other">("download");
   const [reportDetails, setReportDetails] = useState("");
   const [reportWebsite, setReportWebsite] = useState("");
   const [reportMessage, setReportMessage] = useState("");
   const [reportError, setReportError] = useState("");
   const submitIssueReport = trpc.wallpaperReports.submit.useMutation();
+  const reactionSummary = trpc.wallpaperReactions.summary.useQuery({ wallpaperId: id }, { enabled: Number.isInteger(id) && id > 0, staleTime: 30_000, retry: false });
+  const likeWallpaper = trpc.wallpaperReactions.like.useMutation({ onSuccess: summary => {
+    utils.wallpaperReactions.summary.setData({ wallpaperId: id }, summary);
+  } });
   const variants = wallpaper?.variants ?? [];
   const downloads: DownloadOption[] = useMemo(() => wallpaper ? [
     { id: null, resolution: wallpaper.resolution, width: wallpaper.width, height: wallpaper.height, targetDevice: wallpaper.targetDevice, imageUrl: wallpaper.imageUrl, imageMime: wallpaper.imageMime, fileSize: wallpaper.fileSize, downloadCount: wallpaper.downloadCount },
@@ -144,14 +148,16 @@ export default function WallpaperDetail() {
         <div className="detail-actions">
           <a className="button-primary" href={`/api/wallpapers/${wallpaper.id}/download${selected.id === null ? "" : `?variantId=${selected.id}`}`}><Download size={16} /> دانلود {selected.resolution}</a>
           <button className="favorite-detail" aria-pressed={favorites.includes(wallpaper.id)} onClick={() => toggleFavorite(wallpaper.id)}><Heart size={16} fill={favorites.includes(wallpaper.id) ? "currentColor" : "none"} />{favorites.includes(wallpaper.id) ? "ذخیره‌شده" : "علاقه‌مندی"}</button>
+          <button className={`wallpaper-like ${reactionSummary.data?.liked ? "is-liked" : ""}`} type="button" aria-pressed={reactionSummary.data?.liked ?? false} disabled={reactionSummary.isLoading || likeWallpaper.isPending} onClick={() => likeWallpaper.mutate({ wallpaperId: wallpaper.id })}><ThumbsUp size={15} />{reactionSummary.data?.liked ? "پسندیده شد" : "پسندیدن"}<b>{(reactionSummary.data?.likeCount ?? 0).toLocaleString("fa-IR")}</b></button>
           <button className="favorite-detail" onClick={() => void onShare()}><Share2 size={16} /> اشتراک‌گذاری</button>
           <button className="favorite-detail" type="button" aria-expanded={reportOpen} onClick={() => { setReportOpen(value => !value); setReportError(""); }}><Flag size={15} /> گزارش مشکل</button>
         </div>
         {shareMessage && <p className="share-status" role="status"><Copy size={13}/>{shareMessage}</p>}
+        {likeWallpaper.error && <p className="error-text" role="alert">{likeWallpaper.error.message}</p>}
         {reportMessage && <p className="share-status" role="status">{reportMessage}</p>}
         {reportOpen && <form className="wallpaper-report-form" onSubmit={event => void onSubmitIssueReport(event)}>
           <h3>گزارش مشکل این والپیپر</h3><p>ورود لازم نیست. نشانی شبکه ذخیره نمی‌شود و فقط hash محافظت‌شده برای محدودکردن هرزنامه استفاده می‌شود.</p>
-          <label>دلیل گزارش<select value={reportReason} onChange={event => setReportReason(event.target.value as typeof reportReason)}><option value="download">مشکل دانلود</option><option value="quality">کیفیت تصویر</option><option value="wrong_info">اطلاعات نادرست</option><option value="duplicate">تصویر تکراری</option><option value="other">سایر</option></select></label>
+          <label>دلیل گزارش<select value={reportReason} onChange={event => setReportReason(event.target.value as typeof reportReason)}><option value="download">مشکل دانلود</option><option value="broken">تصویر خراب یا بازنشدنی</option><option value="quality">کیفیت نامناسب</option><option value="wrong_info">اطلاعات نادرست</option><option value="irrelevant">نامرتبط با عنوان یا دسته</option><option value="duplicate">تصویر تکراری</option><option value="other">سایر</option></select></label>
           <label>توضیح (اختیاری)<textarea value={reportDetails} onChange={event => setReportDetails(event.target.value)} maxLength={800} rows={3} placeholder="اگر لازم است، کوتاه توضیح بده..." /></label>
           <input className="wallpaper-report-honeypot" type="text" name="website" value={reportWebsite} onChange={event => setReportWebsite(event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" />
           {reportError && <p className="error-text" role="alert">{reportError}</p>}
