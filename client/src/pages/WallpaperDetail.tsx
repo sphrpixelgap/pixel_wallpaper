@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { ArrowLeft, ArrowRight, Copy, Download, Flag, Heart, Maximize2, Minus, MonitorDown, Plus, RotateCcw, Send, Share2, Smartphone, ThumbsUp } from "lucide-react";
+import { ArrowLeft, ArrowRight, Copy, Download, Flag, Heart, Maximize2, Minus, MonitorDown, Plus, RotateCcw, Send, Share2, Smartphone, ThumbsUp, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatBytes, ratioLabel, slugifyGame, toggleFavorite, useFavorites } from "@/lib/wallpaper";
 import WallpaperCard from "@/components/WallpaperCard";
@@ -71,7 +71,11 @@ export default function WallpaperDetail() {
   useEffect(() => { setZoom(1); }, [wallpaper?.id, selectedId]);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setZoom(1); return; }
+      if (event.key === "Escape") {
+        if (reportOpen) setReportOpen(false);
+        else setZoom(1);
+        return;
+      }
       const target = event.target;
       if (target instanceof HTMLElement && target.closest("input, textarea, select, button, a, [contenteditable='true'], [role='radio']")) return;
       if (event.key === "ArrowLeft" && previousWallpaper) { event.preventDefault(); setLocation(`/wallpapers/${previousWallpaper.id}`); return; }
@@ -82,7 +86,14 @@ export default function WallpaperDetail() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [nextWallpaper?.id, previousWallpaper?.id, setLocation]);
+  }, [nextWallpaper?.id, previousWallpaper?.id, reportOpen, setLocation]);
+
+  useEffect(() => {
+    if (!reportOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [reportOpen]);
 
   useEffect(() => { if (wallpaper) document.title = `${wallpaper.title} | پیکسل والپیپر`; return () => { document.title = "پیکسل والپیپر | والپیپر گیمینگ"; }; }, [wallpaper?.id, wallpaper?.title]);
   if (query.isLoading) return <main className="page-wrap"><div className="loading-line"><span className="spinner" /> در حال بارگذاری والپیپر...</div></main>;
@@ -155,14 +166,19 @@ export default function WallpaperDetail() {
         {shareMessage && <p className="share-status" role="status"><Copy size={13}/>{shareMessage}</p>}
         {likeWallpaper.error && <p className="error-text" role="alert">{likeWallpaper.error.message}</p>}
         {reportMessage && <p className="share-status" role="status">{reportMessage}</p>}
-        {reportOpen && <form className="wallpaper-report-form" onSubmit={event => void onSubmitIssueReport(event)}>
-          <h3>گزارش مشکل این والپیپر</h3><p>ورود لازم نیست. نشانی شبکه ذخیره نمی‌شود و فقط hash محافظت‌شده برای محدودکردن هرزنامه استفاده می‌شود.</p>
-          <label>دلیل گزارش<select value={reportReason} onChange={event => setReportReason(event.target.value as typeof reportReason)}><option value="download">مشکل دانلود</option><option value="broken">تصویر خراب یا بازنشدنی</option><option value="quality">کیفیت نامناسب</option><option value="wrong_info">اطلاعات نادرست</option><option value="irrelevant">نامرتبط با عنوان یا دسته</option><option value="duplicate">تصویر تکراری</option><option value="other">سایر</option></select></label>
-          <label>توضیح (اختیاری)<textarea value={reportDetails} onChange={event => setReportDetails(event.target.value)} maxLength={800} rows={3} placeholder="اگر لازم است، کوتاه توضیح بده..." /></label>
-          <input className="wallpaper-report-honeypot" type="text" name="website" value={reportWebsite} onChange={event => setReportWebsite(event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" />
-          {reportError && <p className="error-text" role="alert">{reportError}</p>}
-          <div className="form-actions"><button className="button-primary" type="submit" disabled={submitIssueReport.isPending}>{submitIssueReport.isPending ? "در حال ثبت..." : <><Send size={14} /> ارسال گزارش</>}</button><button className="button-secondary" type="button" onClick={() => setReportOpen(false)}>انصراف</button></div>
-        </form>}
+        {reportOpen && <div className="wallpaper-report-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setReportOpen(false); }}>
+          <section className="wallpaper-report-dialog" role="dialog" aria-modal="true" aria-labelledby="wallpaper-report-title" dir="rtl">
+            <button className="wallpaper-report-close" type="button" aria-label="بستن گزارش" onClick={() => setReportOpen(false)}><X size={18} /></button>
+            <form className="wallpaper-report-form" onSubmit={event => void onSubmitIssueReport(event)}>
+              <h3 id="wallpaper-report-title">گزارش مشکل این والپیپر</h3><p>ورود لازم نیست. نشانی شبکه ذخیره نمی‌شود و فقط hash محافظت‌شده برای محدودکردن هرزنامه استفاده می‌شود.</p>
+              <label>دلیل گزارش<select value={reportReason} onChange={event => setReportReason(event.target.value as typeof reportReason)}><option value="download">مشکل دانلود</option><option value="broken">تصویر خراب یا بازنشدنی</option><option value="quality">کیفیت نامناسب</option><option value="wrong_info">اطلاعات نادرست</option><option value="irrelevant">نامرتبط با عنوان یا دسته</option><option value="duplicate">تصویر تکراری</option><option value="other">سایر</option></select></label>
+              <label>توضیح (اختیاری)<textarea value={reportDetails} onChange={event => setReportDetails(event.target.value)} maxLength={800} rows={3} placeholder="اگر لازم است، کوتاه توضیح بده..." /></label>
+              <input className="wallpaper-report-honeypot" type="text" name="website" value={reportWebsite} onChange={event => setReportWebsite(event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" />
+              {reportError && <p className="error-text" role="alert">{reportError}</p>}
+              <div className="form-actions"><button className="button-primary" type="submit" disabled={submitIssueReport.isPending}>{submitIssueReport.isPending ? "در حال ثبت..." : <><Send size={14} /> ارسال گزارش</>}</button><button className="button-secondary" type="button" onClick={() => setReportOpen(false)}>انصراف</button></div>
+            </form>
+          </section>
+        </div>}
         <p className="detail-footnote"><Smartphone size={13} /> نسخهٔ اصلی با وضوح بارگذاری‌شده نگهداری می‌شود.</p>
       </div>
     </section>
