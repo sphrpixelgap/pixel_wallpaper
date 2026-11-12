@@ -21,7 +21,7 @@ const CollectionsIndex = lazy(() => import("@/pages/Collections").then(module =>
 function Router() {
   return (
     <SiteLayout>
-      <Suspense fallback={<div className="route-loading" role="status"><span className="spinner" /> در حال آماده‌سازی صفحه...</div>}>
+      <Suspense fallback={<div className="route-loading" role="status" aria-live="polite"><span className="spinner" /> در حال آماده‌سازی صفحه...</div>}>
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/wallpapers/:id" component={WallpaperDetail} />
