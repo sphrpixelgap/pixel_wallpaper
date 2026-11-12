@@ -43,6 +43,7 @@ export default function Home() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const [loadFeatured, setLoadFeatured] = useState(false);
   const [category, setCategory] = useState("");
   const [resolution, setResolution] = useState("");
   const [device, setDevice] = useState("");
@@ -55,6 +56,11 @@ export default function Home() {
   const taxonomyCategories = trpc.taxonomy.categories.useQuery();
   const siteSettings = settings.data;
   const displayCategories = taxonomyCategories.data ?? fallbackCategories;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setLoadFeatured(true), 800);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (siteSettings?.seoTitle) document.title = siteSettings.seoTitle;
@@ -77,10 +83,10 @@ export default function Home() {
   useEffect(() => { setPage(1); }, [filters]);
 
   const query = trpc.wallpapers.page.useQuery({ ...filters, page });
-  const popular = trpc.wallpapers.page.useQuery({ sort: "popular", page: featuredPages.popular, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters, placeholderData: previous => previous });
-  const actionCollection = trpc.wallpapers.page.useQuery({ category: "اکشن", sort: "popular", page: featuredPages.action, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters, placeholderData: previous => previous });
-  const adventureCollection = trpc.wallpapers.page.useQuery({ category: "ماجراجویی", sort: "popular", page: featuredPages.adventure, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters, placeholderData: previous => previous });
-  const cyberpunkCollection = trpc.wallpapers.page.useQuery({ category: "سایبرپانک", sort: "popular", page: featuredPages.cyberpunk, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters, placeholderData: previous => previous });
+  const popular = trpc.wallpapers.page.useQuery({ sort: "popular", page: featuredPages.popular, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, placeholderData: previous => previous });
+  const actionCollection = trpc.wallpapers.page.useQuery({ category: "اکشن", sort: "popular", page: featuredPages.action, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, placeholderData: previous => previous });
+  const adventureCollection = trpc.wallpapers.page.useQuery({ category: "ماجراجویی", sort: "popular", page: featuredPages.adventure, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, placeholderData: previous => previous });
+  const cyberpunkCollection = trpc.wallpapers.page.useQuery({ category: "سایبرپانک", sort: "popular", page: featuredPages.cyberpunk, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, placeholderData: previous => previous });
   const dailyPick = trpc.discover.daily.useQuery(undefined, { staleTime: 60_000 });
   const randomPick = trpc.discover.random.useQuery(undefined, { enabled: false, retry: false });
   const games = trpc.games.list.useQuery();
