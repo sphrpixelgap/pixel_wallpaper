@@ -234,6 +234,7 @@ export async function renderSeoPage(requestUrl: string): Promise<SeoPage> {
       const wallpaper = await getWallpaperById(id);
       if (!wallpaper) return notFound();
       const image = safeWallpaperImage(wallpaper.imageUrl) ?? safeWallpaperImage(wallpaper.thumbnailUrl);
+      const mediaImage = safeWallpaperMedia(wallpaper.imageUrl) ?? safeWallpaperMedia(wallpaper.thumbnailUrl);
       const title = `${wallpaper.title} | دانلود والپیپر گیمینگ`;
       const summary = wallpaper.description?.trim() || `والپیپر ${wallpaper.title}${wallpaper.gameTitle ? ` از بازی ${wallpaper.gameTitle}` : ` در دستهٔ ${wallpaper.category}`} با وضوح ${wallpaper.resolution}؛ مناسب برای دسکتاپ، موبایل یا نمایشگر اولتراواید.`;
       const gameLink = wallpaper.gameTitle ? `<p><a href="/games/${encodeURIComponent(slugifyGame(wallpaper.gameTitle))}">دیدن همهٔ والپیپرهای ${escapeHtml(wallpaper.gameTitle)}</a></p>` : "";
@@ -241,7 +242,7 @@ export async function renderSeoPage(requestUrl: string): Promise<SeoPage> {
       return page({
         title, description: summary, canonical: canonical(`/wallpapers/${id}`), robots: noindexQuery ? "noindex, follow" : "index, follow",
         ogType: "article", ogImage: image ?? LOGO_IMAGE, ogImageAlt: wallpaper.title,
-        body: main(`<div class="page-header"><a href="/">بازگشت به گنجینه</a></div><article class="detail-layout seo-detail"><div>${image ? `<img class="detail-image" src="${escapeHtml(image)}" alt="${escapeHtml(wallpaper.title)}" fetchpriority="high" decoding="async">` : ""}</div><div class="detail-panel"><span class="category-label">${escapeHtml(wallpaper.category)}</span><h1>${escapeHtml(shorten(wallpaper.title, 80))}</h1><p>${escapeHtml(summary)}</p><p class="seo-detail-specs">${escapeHtml(details)}</p><p><a class="button-primary" href="/api/wallpapers/${id}/download">دانلود والپیپر ${escapeHtml(wallpaper.resolution)}</a></p>${gameLink}<p><a href="/collections">مرور مجموعه‌های آماده</a></p></div></article>`),
+        body: main(`<div class="page-header"><a href="/">بازگشت به گنجینه</a></div><article class="detail-layout seo-detail"><div>${mediaImage ? `<img class="detail-image" src="${escapeHtml(mediaImage)}" alt="${escapeHtml(wallpaper.title)}" fetchpriority="high" decoding="async">` : ""}</div><div class="detail-panel"><span class="category-label">${escapeHtml(wallpaper.category)}</span><h1>${escapeHtml(shorten(wallpaper.title, 80))}</h1><p>${escapeHtml(summary)}</p><p class="seo-detail-specs">${escapeHtml(details)}</p><p><a class="button-primary" href="/api/wallpapers/${id}/download">دانلود والپیپر ${escapeHtml(wallpaper.resolution)}</a></p>${gameLink}<p><a href="/collections">مرور مجموعه‌های آماده</a></p></div></article>`),
       });
     } catch (error) {
       console.error("[SEO] Wallpaper rendering failed", error instanceof Error ? error.name : "UnknownError");
