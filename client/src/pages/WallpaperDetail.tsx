@@ -47,6 +47,9 @@ export default function WallpaperDetail() {
   const previewImageSource = useMemo(() => selected
     ? getResponsiveImageSource(selected.imageUrl, [640, 960, 1280, 1600, 1920], { quality: 84, maxWidth: selected.width ?? 1920 })
     : { src: "" }, [selected?.imageUrl, selected?.width]);
+  const zoomImageSource = useMemo(() => selected
+    ? getResponsiveImageSource(selected.imageUrl, [selected.width ?? 1920], { quality: 84, maxWidth: selected.width ?? 1920 })
+    : { src: "" }, [selected?.imageUrl, selected?.width]);
   const navigationItems = wallpaper ? [...(relatedQuery.data ?? []).filter(item => item.id !== wallpaper.id), wallpaper].sort((a, b) => a.id - b.id) : [];
   const currentIndex = navigationItems.findIndex(item => item.id === wallpaper?.id);
   const previousWallpaper = currentIndex > 0 ? navigationItems[currentIndex - 1] : undefined;
@@ -104,7 +107,7 @@ export default function WallpaperDetail() {
   if (query.isError && !query.data) return <main className="page-wrap" dir="rtl"><div className="empty-state" role="alert"><h3>بارگذاری والپیپر انجام نشد</h3><p>خطای ارتباط با گنجینه با نبودن تصویر فرق دارد؛ دوباره تلاش کن.</p><button className="button-secondary" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>تلاش دوباره</button></div></main>;
   if (!wallpaper || !selected) return <main className="page-wrap"><div className="page-header"><Link href="/" className="eyebrow"><ArrowRight size={15} /> بازگشت به گنجینه</Link></div><div className="empty-state"><h3>این والپیپر در دسترس نیست</h3><p>ممکن است تصویر حذف شده یا نشانی آن اشتباه باشد.</p><Link className="button-primary" href="/">بازگشت به صفحهٔ اصلی</Link></div></main>;
 
-  const displayImageSource = zoom > 1 ? { src: selected.imageUrl } : previewImageSource;
+  const displayImageSource = zoom > 1 ? zoomImageSource : previewImageSource;
   const tags = (wallpaper.tags ?? "").split(",").map(tag => tag.trim()).filter(Boolean);
   const onShare = async () => {
     const shareData = { title: wallpaper.title, text: `${wallpaper.title} — پیکسل والپیپر`, url: window.location.href };

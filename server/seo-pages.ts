@@ -1,4 +1,5 @@
 import { collections, getCollection } from "../shared/collections";
+import { getImageKitMediaUrl } from "../shared/imagekit-media";
 import { DEFAULT_SITE_SETTINGS } from "../shared/site-settings";
 import { getDb, getSiteSettings, getWallpaperById, listGames, listWallpapers, listWallpapersPage } from "./db";
 import { getPublicImageUrl, SITE_ORIGIN } from "./seo";
@@ -18,7 +19,7 @@ export type SeoPage = {
 };
 
 const SITE_NAME = "پیکسل والپیپر";
-const LOGO_IMAGE = DEFAULT_SITE_SETTINGS.logoUrl;
+const LOGO_IMAGE = new URL(DEFAULT_SITE_SETTINGS.logoUrl, SITE_ORIGIN).toString();
 
 export function escapeHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;");
@@ -62,12 +63,17 @@ function safeWallpaperImage(value: string | null | undefined) {
   return getPublicImageUrl(value);
 }
 
+function safeWallpaperMedia(value: string | null | undefined) {
+  const image = safeWallpaperImage(value);
+  return image ? getImageKitMediaUrl(image, 640, 80) ?? image : undefined;
+}
+
 function wallpaperCard(wallpaper: {
   id: number; title: string; category: string; gameTitle: string | null; description: string | null;
   resolution: string; imageUrl: string; thumbnailUrl: string | null;
 }, index: number) {
   const href = `/wallpapers/${wallpaper.id}`;
-  const image = safeWallpaperImage(wallpaper.thumbnailUrl) ?? safeWallpaperImage(wallpaper.imageUrl);
+  const image = safeWallpaperMedia(wallpaper.thumbnailUrl) ?? safeWallpaperMedia(wallpaper.imageUrl);
   const summary = wallpaper.description?.trim() || [wallpaper.gameTitle, wallpaper.category, wallpaper.resolution].filter(Boolean).join(" · ");
   return `<article class="wallpaper-card seo-wallpaper-card"><a class="wallpaper-image-link" href="${href}" aria-label="مشاهدهٔ ${escapeHtml(wallpaper.title)}">${image ? `<img class="wallpaper-image" src="${escapeHtml(image)}" alt="${escapeHtml(wallpaper.title)}" loading="${index === 0 ? "eager" : "lazy"}"${index === 0 ? ' fetchpriority="high"' : ""} decoding="async">` : `<span class="seo-no-image">پیش‌نمایش تصویر</span>`}</a><div class="wallpaper-card-info"><div><span class="category-label">${escapeHtml(wallpaper.gameTitle || wallpaper.category)}</span><a class="wallpaper-title" href="${href}">${escapeHtml(wallpaper.title)}</a><p class="seo-card-description">${escapeHtml(shorten(summary, 180))}</p></div></div></article>`;
 }
@@ -82,17 +88,18 @@ async function getFeaturedPreview(): Promise<FeaturedPreview> {
   let value: FeaturedPreview = {
     url: LOGO_IMAGE,
     alt: "پیکسل والپیپر؛ والپیپرهای گیمینگ",
-    markup: `<figure class="seo-featured-image"><img src="${escapeHtml(LOGO_IMAGE)}" alt="پیکسل والپیپر؛ والپیپرهای گیمینگ" loading="lazy" decoding="async"><figcaption>پیکسل والپیپر</figcaption></figure>`,
+    markup: `<figure class="seo-featured-image"><img src="/site-logo.webp" alt="پیکسل والپیپر؛ والپیپرهای گیمینگ" loading="lazy" decoding="async"><figcaption>پیکسل والپیپر</figcaption></figure>`,
   };
   try {
     const [wallpaper] = await listWallpapers({ sort: "popular", limit: 1 });
     const image = wallpaper && (safeWallpaperImage(wallpaper.imageUrl) ?? safeWallpaperImage(wallpaper.thumbnailUrl));
-    if (wallpaper && image) {
+    const mediaImage = wallpaper && (safeWallpaperMedia(wallpaper.imageUrl) ?? safeWallpaperMedia(wallpaper.thumbnailUrl));
+    if (wallpaper && image && mediaImage) {
       const alt = wallpaper.title || "والپیپر گیمینگ";
       value = {
         url: image,
         alt,
-        markup: `<figure class="seo-featured-image"><a href="/wallpapers/${wallpaper.id}"><img src="${escapeHtml(image)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async"></a><figcaption><a href="/wallpapers/${wallpaper.id}">${escapeHtml(alt)}</a></figcaption></figure>`,
+        markup: `<figure class="seo-featured-image"><a href="/wallpapers/${wallpaper.id}"><img src="${escapeHtml(mediaImage)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async"></a><figcaption><a href="/wallpapers/${wallpaper.id}">${escapeHtml(alt)}</a></figcaption></figure>`,
       };
     }
   } catch (error) {

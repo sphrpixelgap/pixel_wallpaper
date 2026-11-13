@@ -1,6 +1,7 @@
 // ImageKit-backed storage for production uploads.
 import { createHmac, randomUUID } from "node:crypto";
 import { ENV } from "./_core/env";
+import { IMAGEKIT_PREVIEW_QUALITIES, IMAGEKIT_PREVIEW_WIDTHS } from "../shared/imagekit-media";
 
 const MAX_STORED_IMAGE_BYTES = 12 * 1024 * 1024;
 type StoragePutOptions = { isPrivateFile?: boolean };
@@ -133,17 +134,33 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
   return resolveImageKitDownloadUrl(relKey);
 }
 
-/** Build a direct ImageKit CDN download URL with a safe attachment filename. */
-export function storageGetAttachmentUrl(relKey: string, filename: string): string {
-  const safeFilename = filename.trim();
-  if (!safeFilename || safeFilename.length > 180 || /[\u0000-\u001f\u007f]/.test(safeFilename)) {
-    throw new Error("Invalid ImageKit attachment filename.");
+/** Build a deterministic WebP preview URL only for public wallpaper and site-logo assets. */
+export function storageGetPreviewUrl(relKey: string, width: number, quality: number): string {
+  if (!IMAGEKIT_PREVIEW_WIDTHS.includes(width as typeof IMAGEKIT_PREVIEW_WIDTHS[number]) ||
+      !IMAGEKIT_PREVIEW_QUALITIES.includes(quality as typeof IMAGEKIT_PREVIEW_QUALITIES[number])) {
+    throw new Error("Unsupported ImageKit preview transformation.");
   }
   const url = new URL(resolveImageKitDownloadUrl(relKey));
-  url.searchParams.delete("tr");
-  url.searchParams.set("ik-attachment", "true");
-  url.searchParams.set("ik-attachment-filename", safeFilename);
+  const endpoint = getValidatedImageKitEndpoint();
+  const endpointPath = endpoint.pathname.replace(/\/+$/, "");
+  const basePath = endpointPath ? `${endpointPath}/` : "/";
+  if (!url.pathname.startsWith(basePath)) throw new Error("The stored image URL is outside the configured ImageKit endpoint.");
+  const assetPath = url.pathname.slice(basePath.length);
+  const decodedPath = decodeURIComponent(assetPath);
+  const segments = decodedPath.split("/");
+  if (!assetPath || segments.some(segment => !segment || segment === "." || segment === ".." || segment.startsWith("tr:")) ||
+      decodedPath.includes("\\") || /[\u0000-\u001f\u007f]/.test(decodedPath) ||
+      !["wallpapers/", "site-settings/"].some(prefix => decodedPath.startsWith(prefix))) {
+    throw new Error("Only public wallpaper and site-logo assets may be transformed.");
+  }
+  url.pathname = `${endpointPath}/tr:w-${width},q-${quality},f-webp/${assetPath}`;
+  url.search = "";
   return url.toString();
+}
+
+export async function storageFetchPreview(relKey: string, width: number, quality: number): Promise<Response> {
+  const url = storageGetPreviewUrl(relKey, width, quality);
+  return fetch(url, { headers: { Accept: "image/webp" }, redirect: "error", signal: AbortSignal.timeout(30_000) });
 }
 
 export async function storageFetch(relKey: string): Promise<Response> {

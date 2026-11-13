@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { ArrowLeft, CheckCircle2, Copy, Send } from "lucide-react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { getResponsiveImageSource } from "@/lib/imagekit";
 
 type DuplicateMatch = {
   id: number;
@@ -30,7 +31,7 @@ function DuplicateMatchCards({ matches }: { matches: DuplicateMatch[] }) {
   return <div className="request-duplicate-grid">
     {matches.map(match => <Link key={match.id} className="request-duplicate-card" href={`/wallpapers/${match.id}`}>
       {match.thumbnailUrl
-        ? <img src={match.thumbnailUrl} alt={match.title} loading="lazy" decoding="async" />
+        ? <img src={getResponsiveImageSource(match.thumbnailUrl, [160], { quality: 80, maxWidth: 320 }).src} alt={match.title} loading="lazy" decoding="async" />
         : <span className="request-duplicate-placeholder" aria-hidden="true" />}
       <strong>{match.title}</strong>
     </Link>)}

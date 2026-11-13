@@ -1,11 +1,11 @@
 const SHELL_CACHE = "pixelwp-shell-v2";
-const IMAGE_CACHE = "pixelwp-images-v1";
-const SHELL_URLS = ["/", "/manifest.webmanifest", "/pwa-192.png", "/pwa-512.png"];
+const IMAGE_CACHE = "pixelwp-images-v2";
+const SHELL_URLS = ["/", "/manifest.webmanifest", "/pwa-192.png", "/pwa-512.png", "/site-logo.webp"];
 const MAX_CACHED_PAGES = 24;
 const MAX_CACHED_IMAGES = 48;
 const NAVIGATION_TIMEOUT_MS = 1_800;
 const ASSET_PATHS_TO_BYPASS = ["/api", "/admin", "/manus-oauth/", "/__manus/", "/__system__/"];
-const IMAGEKIT_WALLPAPER_PATH = "/xwqxnxqle/wallpapers/";
+const SITE_MEDIA_PATHS = ["/media/wallpapers/", "/media/site-settings/"];
 
 async function fetchWithTimeout(request, timeoutMs) {
   const controller = new AbortController();
@@ -43,8 +43,8 @@ async function cacheWallpaperImage(cache, request, response) {
     const keys = await cache.keys();
     const images = keys.filter(key => {
       const cachedUrl = new URL(key.url);
-      return cachedUrl.pathname.startsWith("/manus-storage/") ||
-        (cachedUrl.hostname === "ik.imagekit.io" && cachedUrl.pathname.startsWith(IMAGEKIT_WALLPAPER_PATH));
+      return cachedUrl.origin === self.location.origin &&
+        (cachedUrl.pathname.startsWith("/manus-storage/") || SITE_MEDIA_PATHS.some(prefix => cachedUrl.pathname.startsWith(prefix)));
     });
     for (const old of images.slice(0, Math.max(0, images.length - MAX_CACHED_IMAGES))) await cache.delete(old);
   } catch {
@@ -88,11 +88,10 @@ self.addEventListener("fetch", event => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  const isImageKitWallpaper = url.hostname === "ik.imagekit.io" && url.pathname.startsWith(IMAGEKIT_WALLPAPER_PATH);
-  if (url.origin !== self.location.origin && !isImageKitWallpaper) return;
+  if (url.origin !== self.location.origin) return;
   if (url.origin === self.location.origin && ASSET_PATHS_TO_BYPASS.some(prefix => url.pathname.startsWith(prefix))) return;
 
-  if (isImageKitWallpaper && request.destination === "image") {
+  if (SITE_MEDIA_PATHS.some(prefix => url.pathname.startsWith(prefix)) && request.destination === "image") {
     respondWithCachedImage(event, request);
     return;
   }

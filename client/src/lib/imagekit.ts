@@ -1,43 +1,30 @@
-const IMAGEKIT_HOST = "ik.imagekit.io";
-const IMAGEKIT_ACCOUNT_ID = "xwqxnxqle";
-const MAX_IMAGE_WIDTH = 4096;
+import { getImageKitMediaUrl, IMAGEKIT_PREVIEW_WIDTHS } from "@shared/imagekit-media";
+
+const MAX_IMAGE_WIDTH = 3840;
+const LEGACY_SITE_LOGO_URL = "https://files.manuscdn.com/user_upload_by_module/session_file/310519664055778542/BvOcnZWtyFfXPqMt.png";
+const LOCAL_SITE_LOGO_URL = "/site-logo.webp";
 
 type ResponsiveImageSourceOptions = {
   quality?: number;
   maxWidth?: number;
 };
 
-function getImageKitAsset(source: string) {
-  try {
-    const url = new URL(source);
-    const accountPrefix = `/${IMAGEKIT_ACCOUNT_ID}/`;
-    if (url.protocol !== "https:" || url.hostname !== IMAGEKIT_HOST || url.port || url.username || url.password || url.search || url.hash) return null;
-    if (!url.pathname.startsWith(accountPrefix)) return null;
-
-    const assetPath = url.pathname.slice(accountPrefix.length);
-    if (!assetPath || assetPath.split("/").some(segment => !segment || segment === "." || segment === ".." || segment.startsWith("tr:"))) return null;
-    return { url, assetPath, accountPrefix };
-  } catch {
-    return null;
-  }
+function normalizedSource(source: string) {
+  return source === LEGACY_SITE_LOGO_URL ? LOCAL_SITE_LOGO_URL : source;
 }
 
-function transformedUrl(source: string, width: number, quality: number) {
-  const asset = getImageKitAsset(source);
-  if (!asset) return source;
-  const url = new URL(asset.url);
-  url.pathname = `${asset.accountPrefix}tr:w-${width},q-${quality},f-auto/${asset.assetPath}`;
-  return url.toString();
+function transformUrl(source: string, width: number, quality: number) {
+  return getImageKitMediaUrl(source, width, quality) ?? normalizedSource(source);
 }
 
-/** Build src/srcSet URLs for display. Full-resolution downloads must keep using the stored original URL. */
+/** Build first-party src/srcSet URLs for display. Full-resolution downloads use the download endpoint. */
 export function getResponsiveImageSource(
   source: string,
   requestedWidths: number[],
   options: ResponsiveImageSourceOptions = {},
 ): { src: string; srcSet?: string } {
-  const asset = getImageKitAsset(source);
-  if (!asset) return { src: source };
+  const normalized = normalizedSource(source);
+  if (!getImageKitMediaUrl(normalized, IMAGEKIT_PREVIEW_WIDTHS[0], 80)) return { src: normalized };
 
   const maxWidthValue = options.maxWidth ?? MAX_IMAGE_WIDTH;
   const maxWidth = Number.isFinite(maxWidthValue)
@@ -45,12 +32,15 @@ export function getResponsiveImageSource(
     : MAX_IMAGE_WIDTH;
   const widths = [...new Set(requestedWidths
     .filter(width => Number.isFinite(width) && width > 0)
-    .map(width => Math.min(maxWidth, MAX_IMAGE_WIDTH, Math.max(1, Math.round(width)))))].sort((a, b) => a - b);
-  if (!widths.length) return { src: source };
+    .map(width => {
+      const desiredWidth = Math.min(maxWidth, MAX_IMAGE_WIDTH, Math.max(1, Math.round(width)));
+      const available = IMAGEKIT_PREVIEW_WIDTHS.filter(candidate => candidate <= desiredWidth && candidate <= maxWidth);
+      return available.length ? available[available.length - 1] : IMAGEKIT_PREVIEW_WIDTHS[0];
+    }))].sort((a, b) => a - b);
+  if (!widths.length) return { src: normalized };
 
-  const qualityValue = options.quality ?? 80;
-  const quality = Number.isFinite(qualityValue) ? Math.max(50, Math.min(95, Math.round(qualityValue))) : 80;
+  const quality = options.quality === 84 ? 84 : 80;
   const fallbackWidth = widths[Math.floor(widths.length / 2)];
-  const srcSet = widths.map(width => `${transformedUrl(source, width, quality)} ${width}w`).join(", ");
-  return { src: transformedUrl(source, fallbackWidth, quality), srcSet };
+  const srcSet = widths.map(width => `${transformUrl(source, width, quality)} ${width}w`).join(", ");
+  return { src: transformUrl(source, fallbackWidth, quality), srcSet };
 }

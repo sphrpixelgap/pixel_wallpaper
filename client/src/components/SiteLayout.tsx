@@ -4,13 +4,15 @@ import InstallAppButton from "@/components/InstallAppButton";
 import { Bookmark, ClipboardList, Compass, ImagePlus, ImageUp, Images, Moon, Send, Sun } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
+import { getResponsiveImageSource } from "@/lib/imagekit";
 
-const LOGO_URL = "https://files.manuscdn.com/user_upload_by_module/session_file/310519664055778542/BvOcnZWtyFfXPqMt.png";
+const LOGO_URL = "/site-logo.webp";
 
 export default function SiteLayout({ children }: { children: ReactNode }) {
   const favorites = useFavorites();
   const settings = trpc.siteSettings.public.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
   const siteSettings = settings.data;
+  const logoImageSource = getResponsiveImageSource(siteSettings?.logoUrl || LOGO_URL, [160, 320], { quality: 80, maxWidth: 320 });
   const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     try { return localStorage.getItem("pixel-wallpaper-theme") === "light" ? "light" : "dark"; }
@@ -136,7 +138,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
       <header className="topbar">
         <div className="topbar-inner">
           <Link href="/" className="brand" aria-label="صفحه اصلی پیکسل والپیپر">
-            <img src={siteSettings?.logoUrl || LOGO_URL} alt={`نشان ${siteSettings?.brandName || "پیکسل والپیپر"}`} />
+            <img src={logoImageSource.src} srcSet={logoImageSource.srcSet} sizes="44px" alt={`نشان ${siteSettings?.brandName || "پیکسل والپیپر"}`} />
             <span className="brand-copy"><strong>{siteSettings?.brandName || "پیکسل"}</strong><small>{siteSettings?.brandCaption || "والپیپر گیمینگ"}</small></span>
           </Link>
           <a className="telegram-button" href="https://t.me/pixel_wallpaper_chanel" target="_blank" rel="noopener noreferrer" aria-label="ورود به کانال تلگرام پیکسل والپیپر">

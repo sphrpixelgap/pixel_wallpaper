@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -13,7 +15,8 @@ import { hashWallpaperDownloadAddress, WALLPAPER_DOWNLOAD_LIMIT, WALLPAPER_DOWNL
 import { COMMUNITY_WALLPAPER_SUBMISSION_LIMIT, COMMUNITY_WALLPAPER_SUBMISSION_WINDOW_MS, communityWallpaperSubmissionBucketHash, parseCommunityWallpaperSubmissionHeader, resolutionForWallpaperDimensions, targetDeviceForWallpaperDimensions, type CommunityWallpaperSubmissionInput } from "../community-submissions";
 import { CommunityImageError, processCommunityWallpaperImage } from "../community-image";
 import { redactWallpaperIssueDetails } from "../privacy";
-import { storageDeleteFile, storageGetAttachmentUrl, storagePut } from "../storage";
+import { storageDeleteFile, storageFetch, storageFetchPreview, storagePut } from "../storage";
+import { IMAGEKIT_PREVIEW_QUALITIES, IMAGEKIT_PREVIEW_WIDTHS } from "../../shared/imagekit-media";
 import { runImageKitCleanupQueue, startImageKitCleanupWorker } from "../imagekit-cleanup";
 import { serveStatic, setupVite } from "./vite";
 import { buildRobotsTxt, buildSitemapXml } from "../seo";
@@ -296,6 +299,45 @@ async function startServer() {
       res.status(500).json({ error: "بارگذاری تصویر انجام نشد. دوباره تلاش کنید." });
     }
   });
+  app.get("/media/*", (req, res) => {
+    void (async () => {
+      const mediaKey = (req.params as Record<string, string>)["0"] || "";
+      const width = typeof req.query.w === "string" ? Number(req.query.w) : Number.NaN;
+      const quality = typeof req.query.q === "string" ? Number(req.query.q) : Number.NaN;
+      if ((!mediaKey.startsWith("wallpapers/") && !mediaKey.startsWith("site-settings/")) ||
+          mediaKey.split("/").some(segment => !segment || segment === "." || segment === "..") || /[\\\u0000-\u001f\u007f]/.test(mediaKey)) {
+        res.status(404).send("پیش‌نمایش تصویر پیدا نشد.");
+        return;
+      }
+      if (!IMAGEKIT_PREVIEW_WIDTHS.includes(width as typeof IMAGEKIT_PREVIEW_WIDTHS[number]) ||
+          !IMAGEKIT_PREVIEW_QUALITIES.includes(quality as typeof IMAGEKIT_PREVIEW_QUALITIES[number])) {
+        res.status(400).send("اندازهٔ پیش‌نمایش نامعتبر است.");
+        return;
+      }
+      try {
+        const upstream = await storageFetchPreview(mediaKey, width, quality);
+        const contentType = upstream.headers.get("content-type") || "";
+        if (!upstream.ok || !upstream.body || !contentType.startsWith("image/")) {
+          await upstream.body?.cancel().catch(() => undefined);
+          res.set("Cache-Control", "no-store").status(502).send("بارگذاری پیش‌نمایش تصویر انجام نشد.");
+          return;
+        }
+        res.status(upstream.status)
+          .set("Content-Type", contentType)
+          .set("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable")
+          .set("X-Content-Type-Options", "nosniff");
+        const contentLength = Number(upstream.headers.get("content-length") || 0);
+        if (Number.isSafeInteger(contentLength) && contentLength > 0) res.set("Content-Length", String(contentLength));
+        const etag = upstream.headers.get("etag");
+        if (etag) res.set("ETag", etag);
+        await pipeline(Readable.fromWeb(upstream.body as any), res);
+      } catch (error) {
+        console.error("[Wallpaper preview] failed", error instanceof Error ? error.name : "unknown");
+        if (res.headersSent) res.destroy(error instanceof Error ? error : undefined);
+        else res.set("Cache-Control", "no-store").status(502).send("بارگذاری پیش‌نمایش تصویر انجام نشد.");
+      }
+    })();
+  });
   app.get("/api/wallpapers/:id/download", async (req, res) => {
     const wallpaperId = Number(req.params.id);
     const rawVariantId = req.query.variantId;
@@ -333,10 +375,20 @@ async function startServer() {
 
       const safePart = (value: string) => value.trim().replace(/[^\p{L}\p{N}-]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "") || "wallpaper";
       const filename = `${safePart(target.title)}-${safePart(target.resolution)}`;
-      const downloadUrl = storageGetAttachmentUrl(target.imageKey, filename);
+      const file = await storageFetch(target.imageKey);
+      if (!file.ok || !file.body) {
+        await file.body?.cancel().catch(() => undefined);
+        sendDownloadFailure(res, "دریافت فایل از فضای ذخیره‌سازی انجام نشد.");
+        return;
+      }
+      const extension = target.imageMime === "image/png" ? ".png" : target.imageMime === "image/jpeg" ? ".jpg" : ".webp";
       res.set("Cache-Control", "private, no-store").set("X-Content-Type-Options", "nosniff");
-      res.once("finish", () => { void recordWallpaperDownload(wallpaperId, variantId).catch(() => undefined); });
-      res.redirect(302, downloadUrl);
+      res.attachment(`${filename}${extension}`);
+      res.set("Content-Type", target.imageMime || file.headers.get("content-type") || "application/octet-stream");
+      const contentLength = Number(file.headers.get("content-length") || 0);
+      if (Number.isSafeInteger(contentLength) && contentLength > 0) res.set("Content-Length", String(contentLength));
+      await pipeline(Readable.fromWeb(file.body as any), res);
+      await recordWallpaperDownload(wallpaperId, variantId).catch(() => undefined);
     } catch (error) {
       console.error("[Wallpaper download] failed", error instanceof Error ? error.name : "unknown");
       sendDownloadFailure(res, "دانلود فایل انجام نشد؛ لطفاً دوباره تلاش کنید.", error);

@@ -2,9 +2,10 @@ import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resolveImageKitDownloadUrl,
-  storageGetAttachmentUrl,
   storageDeleteFile,
   storageFetch,
+  storageFetchPreview,
+  storageGetPreviewUrl,
   storageGetSignedUrl,
   storagePromotePrivateImage,
   storagePut,
@@ -42,14 +43,16 @@ describe("ImageKit download URL validation", () => {
       .toBe("https://ik.imagekit.io/xwqxnxqle/wallpapers/one.webp?tr=w-200");
   });
 
-  it("builds direct attachment URLs with an encoded filename and no size transform", () => {
+  it("builds same-account WebP preview URLs with fixed transformation buckets", () => {
     configureImageKit();
-    const url = new URL(storageGetAttachmentUrl("https://ik.imagekit.io/xwqxnxqle/wallpapers/one.webp?tr=w-200", "Pixel wallpaper - 4K"));
-    expect(url.origin + url.pathname).toBe("https://ik.imagekit.io/xwqxnxqle/wallpapers/one.webp");
-    expect(url.searchParams.get("tr")).toBeNull();
-    expect(url.searchParams.get("ik-attachment")).toBe("true");
-    expect(url.searchParams.get("ik-attachment-filename")).toBe("Pixel wallpaper - 4K");
-    expect(() => storageGetAttachmentUrl("wallpapers/one.webp", "bad\nname")).toThrow();
+    expect(storageGetPreviewUrl("wallpapers/one.webp", 640, 80))
+      .toBe("https://ik.imagekit.io/xwqxnxqle/tr:w-640,q-80,f-webp/wallpapers/one.webp");
+    expect(storageGetPreviewUrl("https://ik.imagekit.io/xwqxnxqle/wallpapers/one.webp?tr=w-200", 1920, 84))
+      .toBe("https://ik.imagekit.io/xwqxnxqle/tr:w-1920,q-84,f-webp/wallpapers/one.webp");
+    expect(storageGetPreviewUrl("site-settings/logo.webp", 320, 80))
+      .toBe("https://ik.imagekit.io/xwqxnxqle/tr:w-320,q-80,f-webp/site-settings/logo.webp");
+    expect(() => storageGetPreviewUrl("wallpapers/one.webp", 500, 80)).toThrow();
+    expect(() => storageGetPreviewUrl("community-pending/private.webp", 320, 80)).toThrow();
   });
 
   it("rejects other hosts, other accounts, credentials, queries, and traversal", () => {
@@ -80,6 +83,18 @@ describe("ImageKit download URL validation", () => {
     await storageFetch("wallpapers/one.webp");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe("https://ik.imagekit.io/xwqxnxqle/wallpapers/one.webp");
+    expect(fetchMock.mock.calls[0][1].redirect).toBe("error");
+    expect(fetchMock.mock.calls[0][1].signal).toBeDefined();
+  });
+
+  it("fetches preview transforms as WebP without following redirects", async () => {
+    configureImageKit();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { headers: { "Content-Type": "image/webp" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await storageFetchPreview("wallpapers/one.webp", 640, 80);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://ik.imagekit.io/xwqxnxqle/tr:w-640,q-80,f-webp/wallpapers/one.webp");
+    expect(fetchMock.mock.calls[0][1].headers.Accept).toBe("image/webp");
     expect(fetchMock.mock.calls[0][1].redirect).toBe("error");
     expect(fetchMock.mock.calls[0][1].signal).toBeDefined();
   });

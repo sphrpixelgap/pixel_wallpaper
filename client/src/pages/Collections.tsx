@@ -3,6 +3,7 @@ import { Link, useParams } from "wouter";
 import { ArrowRight, ChevronLeft, ChevronRight, Layers3 } from "lucide-react";
 import { collections, getCollection } from "@shared/collections";
 import { trpc } from "@/lib/trpc";
+import { getResponsiveImageSource } from "@/lib/imagekit";
 import WallpaperCard from "@/components/WallpaperCard";
 import NotFound from "@/pages/NotFound";
 
@@ -11,8 +12,9 @@ const PAGE_SIZE = 24;
 function CollectionTile({ collection }: { collection: (typeof collections)[number] }) {
   const sample = trpc.wallpapers.page.useQuery({ ...collection.filters, page: 1, pageSize: 1 });
   const wallpaper = sample.data?.items[0];
+  const imageSource = wallpaper ? getResponsiveImageSource(wallpaper.thumbnailUrl || wallpaper.imageUrl, [320, 480], { quality: 80, maxWidth: 480 }) : undefined;
   return <Link href={`/collections/${collection.slug}`} className="collection-tile" style={{ "--collection-accent": collection.accent } as React.CSSProperties}>
-    <div className="collection-tile-art">{wallpaper ? <img src={wallpaper.thumbnailUrl || wallpaper.imageUrl} alt="" loading="lazy" /> : <span className="collection-art-mark"><Layers3 size={34} /></span>}<span className="collection-art-shade" /></div>
+    <div className="collection-tile-art">{wallpaper && imageSource ? <img src={imageSource.src} srcSet={imageSource.srcSet} sizes="(max-width: 650px) 50vw, 25vw" alt="" loading="lazy" /> : <span className="collection-art-mark"><Layers3 size={34} /></span>}<span className="collection-art-shade" /></div>
     <div className="collection-tile-copy"><span className="section-kicker">مجموعهٔ آماده</span><h2>{collection.title}</h2><p>{collection.description}</p><span className="collection-tile-cta">مشاهدهٔ مجموعه <ChevronLeft size={16} /></span></div>
   </Link>;
 }

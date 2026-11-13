@@ -57,7 +57,9 @@ export function getPublicImageUrl(value: string | null | undefined) {
     const url = new URL(value, SITE_ORIGIN);
     if (url.username || url.password || url.search || url.hash || url.pathname.split("/").includes("..")) return undefined;
 
-    const isSiteStorage = url.origin === SITE_ORIGIN && url.pathname.startsWith("/manus-storage/");
+    const isSiteStorage = url.origin === SITE_ORIGIN && (
+      url.pathname.startsWith("/manus-storage/") || url.pathname.startsWith("/media/") || url.pathname === "/site-logo.webp"
+    );
     const imageKitEndpoint = getImageKitEndpoint();
     const endpointPath = imageKitEndpoint?.pathname.replace(/\/+$/, "") || "";
     const isImageKitStorage = Boolean(

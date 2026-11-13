@@ -3,11 +3,12 @@ import { ArrowLeft, ArrowUpLeft, ChevronLeft, ChevronRight, Flame, Gamepad2, Ima
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { categories as fallbackCategories, colors, devices, moods, resolutions, slugifyGame } from "@/lib/wallpaper";
+import { getResponsiveImageSource } from "@/lib/imagekit";
 import WallpaperCard from "@/components/WallpaperCard";
 import InstallAppButton from "@/components/InstallAppButton";
 
 const HeroScene = lazy(() => import("@/components/HeroScene"));
-const LOGO_URL = "https://files.manuscdn.com/user_upload_by_module/session_file/310519664055778542/BvOcnZWtyFfXPqMt.png";
+const LOGO_URL = "/site-logo.webp";
 const PAGE_SIZE = 24;
 const FEATURED_PAGE_SIZE = 4;
 const optionId = (index: number) => `wallpaper-search-option-${index}`;
@@ -58,11 +59,14 @@ export default function Home() {
   const settings = trpc.siteSettings.public.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
   const taxonomyCategories = trpc.taxonomy.categories.useQuery(undefined, { enabled: loadFeatured, staleTime: 120_000, refetchOnWindowFocus: false });
   const siteSettings = settings.data;
+  const logoImageSource = getResponsiveImageSource(siteSettings?.logoUrl || LOGO_URL, [160, 320], { quality: 80, maxWidth: 320 });
   const displayCategories = taxonomyCategories.data ?? fallbackCategories;
 
   useEffect(() => {
     const hero = heroRef.current;
-    if (!hero || window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    const constrainedNetwork = connection?.saveData || connection?.effectiveType === "2g" || connection?.effectiveType === "slow-2g";
+    if (!hero || window.innerWidth < 900 || constrainedNetwork || window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
     const idleWindow = window as typeof window & {
       requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
       cancelIdleCallback?: (handle: number) => void;
@@ -72,8 +76,8 @@ export default function Home() {
     const observer = new IntersectionObserver(entries => {
       if (!entries.some(entry => entry.isIntersecting)) return;
       observer.disconnect();
-      if (idleWindow.requestIdleCallback) idleHandle = idleWindow.requestIdleCallback(() => setLoadHeroScene(true), { timeout: 1_200 });
-      else fallbackTimer = window.setTimeout(() => setLoadHeroScene(true), 350);
+      if (idleWindow.requestIdleCallback) idleHandle = idleWindow.requestIdleCallback(() => setLoadHeroScene(true), { timeout: 3_500 });
+      else fallbackTimer = window.setTimeout(() => setLoadHeroScene(true), 2_000);
     }, { rootMargin: "140px" });
     observer.observe(hero);
     return () => {
@@ -169,7 +173,7 @@ export default function Home() {
         </div>
         <div className="hero-mark" aria-hidden="true">
           {loadHeroScene && <Suspense fallback={null}><HeroScene /></Suspense>}
-          <img src={siteSettings?.logoUrl || LOGO_URL} alt="لوگوی پیکسل والپیپر" />
+          <img src={logoImageSource.src} srcSet={logoImageSource.srcSet} sizes="132px" alt="لوگوی پیکسل والپیپر" />
         </div>
       </section>
 

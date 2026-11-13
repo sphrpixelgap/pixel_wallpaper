@@ -16,7 +16,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettingsValues = {
   brandName: "پیکسل",
   brandCaption: "والپیپر گیمینگ",
   footerTagline: "برای هر فریم، یک دنیای تازه.",
-  logoUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519664055778542/BvOcnZWtyFfXPqMt.png",
+  logoUrl: "/site-logo.webp",
   accentColor: "#a36bff",
   heroEyebrow: "دنیای تصویرهای گیمینگ",
   heroTitle: "بازی‌ها را",
