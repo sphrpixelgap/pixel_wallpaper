@@ -940,3 +940,39 @@ html[data-theme="light"] .hero h1 span {
 }
 html[data-theme="light"] .section-kicker,
 html[data-theme="light"] .section-kicker svg { color: #60358f; }
+
+.install-app-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 12px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform .2s, border-color .2s, background .2s;
+}
+.install-app-button:hover {
+  transform: translateY(-2px);
+  border-color: #a36bff75;
+  background: #a36bff14;
+}
+html[data-theme="light"] .install-app-button {
+  background: #fff;
+  color: #382653;
+  border-color: rgba(79, 60, 100, .22);
+}
+html[data-theme="light"] .install-app-button:hover {
+  background: #f7f2ff;
+  border-color: rgba(96, 53, 143, .45);
+}
+@media (max-width: 650px) {
+  .install-app-button { min-height: 38px; padding: 11px 13px; font-size: 11px; }
+}
