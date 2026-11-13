@@ -929,3 +929,14 @@ html[data-theme="light"] .community-review-meta { color: #553287; background: #f
 html[data-theme="light"] .community-review-meta small { color: var(--muted); }
 html[data-theme="light"] .admin-manager-badge { color: #553287; background: #f5effb; }
 html[data-theme="light"] .admin-manager-badge.warning { color: #77500d; background: #fff5da; }
+
+html[data-theme="light"] .hero h1 span {
+  color: #60358f;
+  background: none;
+  background-clip: border-box;
+  -webkit-background-clip: border-box;
+  -webkit-text-fill-color: #60358f;
+  text-shadow: none;
+}
+html[data-theme="light"] .section-kicker,
+html[data-theme="light"] .section-kicker svg { color: #60358f; }
