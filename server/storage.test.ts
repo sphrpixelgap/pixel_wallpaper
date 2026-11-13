@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resolveImageKitDownloadUrl,
+  storageGetAttachmentUrl,
   storageDeleteFile,
   storageFetch,
   storageGetSignedUrl,
@@ -39,6 +40,16 @@ describe("ImageKit download URL validation", () => {
     configureImageKit();
     expect(resolveImageKitDownloadUrl("https://ik.imagekit.io/xwqxnxqle/wallpapers/one.webp?tr=w-200"))
       .toBe("https://ik.imagekit.io/xwqxnxqle/wallpapers/one.webp?tr=w-200");
+  });
+
+  it("builds direct attachment URLs with an encoded filename and no size transform", () => {
+    configureImageKit();
+    const url = new URL(storageGetAttachmentUrl("https://ik.imagekit.io/xwqxnxqle/wallpapers/one.webp?tr=w-200", "Pixel wallpaper - 4K"));
+    expect(url.origin + url.pathname).toBe("https://ik.imagekit.io/xwqxnxqle/wallpapers/one.webp");
+    expect(url.searchParams.get("tr")).toBeNull();
+    expect(url.searchParams.get("ik-attachment")).toBe("true");
+    expect(url.searchParams.get("ik-attachment-filename")).toBe("Pixel wallpaper - 4K");
+    expect(() => storageGetAttachmentUrl("wallpapers/one.webp", "bad\nname")).toThrow();
   });
 
   it("rejects other hosts, other accounts, credentials, queries, and traversal", () => {

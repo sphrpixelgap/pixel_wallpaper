@@ -133,6 +133,19 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
   return resolveImageKitDownloadUrl(relKey);
 }
 
+/** Build a direct ImageKit CDN download URL with a safe attachment filename. */
+export function storageGetAttachmentUrl(relKey: string, filename: string): string {
+  const safeFilename = filename.trim();
+  if (!safeFilename || safeFilename.length > 180 || /[\u0000-\u001f\u007f]/.test(safeFilename)) {
+    throw new Error("Invalid ImageKit attachment filename.");
+  }
+  const url = new URL(resolveImageKitDownloadUrl(relKey));
+  url.searchParams.delete("tr");
+  url.searchParams.set("ik-attachment", "true");
+  url.searchParams.set("ik-attachment-filename", safeFilename);
+  return url.toString();
+}
+
 export async function storageFetch(relKey: string): Promise<Response> {
   const url = await storageGetSignedUrl(relKey);
   return fetch(url, { redirect: "error", signal: AbortSignal.timeout(30_000) });

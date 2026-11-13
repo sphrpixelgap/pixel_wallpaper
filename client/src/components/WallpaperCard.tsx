@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Download, Heart, Info, Maximize2, Minimize2 } from "lucide-react";
 import { Link } from "wouter";
 import type { Wallpaper } from "@/lib/trpc";
 import { formatBytes, slugifyGame, toggleFavorite, useFavorites } from "@/lib/wallpaper";
+import { getResponsiveImageSource } from "@/lib/imagekit";
 
 export default function WallpaperCard({ wallpaper, compact = false, presentation = "default", showActions = true, priority = false }: { wallpaper: Wallpaper; compact?: boolean; presentation?: "default" | "gallery"; showActions?: boolean; priority?: boolean }) {
   const favorites = useFavorites();
@@ -13,6 +14,17 @@ export default function WallpaperCard({ wallpaper, compact = false, presentation
   const [showOriginalAspect, setShowOriginalAspect] = useState(false);
   const [showGalleryInfo, setShowGalleryInfo] = useState(false);
   const imageUrl = wallpaper.thumbnailUrl || wallpaper.imageUrl;
+  const thumbnailMaxWidth = wallpaper.width && wallpaper.height
+    ? Math.round(wallpaper.width * Math.min(1, 720 / Math.max(wallpaper.width, wallpaper.height)))
+    : 720;
+  const sourceMaxWidth = wallpaper.thumbnailUrl ? thumbnailMaxWidth : wallpaper.width ?? 1280;
+  const imageWidths = wallpaper.thumbnailUrl ? [160, 320, 480, 640, 720] : [320, 480, 640, 960, 1280];
+  const imageSource = useMemo(() => getResponsiveImageSource(imageUrl, imageWidths, { quality: 80, maxWidth: sourceMaxWidth }), [imageUrl, sourceMaxWidth, wallpaper.thumbnailUrl]);
+  const imageSizes = isGallery
+    ? "(max-width: 700px) 50vw, (max-width: 1100px) 50vw, 25vw"
+    : compact
+      ? "(max-width: 700px) 50vw, 25vw"
+      : "(max-width: 650px) calc(100vw - 30px), (max-width: 900px) 50vw, 33vw";
   const aspect = isGallery && !showOriginalAspect || !wallpaper.width || !wallpaper.height
     ? "16 / 9"
     : `${wallpaper.width} / ${wallpaper.height}`;
@@ -21,7 +33,7 @@ export default function WallpaperCard({ wallpaper, compact = false, presentation
     <article className={`wallpaper-card ${compact ? "is-compact" : ""} ${isGallery ? "is-gallery" : ""} ${isGallery && showOriginalAspect ? "is-full-aspect" : ""}`}>
       <Link href={`/wallpapers/${wallpaper.id}`} className="wallpaper-image-link" style={{ aspectRatio: aspect }}>
         {isGallery && !imageLoaded && !imageFailed && <span className="gallery-image-placeholder" aria-hidden="true"><span /></span>}
-        {!imageFailed && <img className={`wallpaper-image ${imageLoaded ? "is-loaded" : ""}`} src={imageUrl} alt={wallpaper.title} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" onLoad={isGallery ? () => setImageLoaded(true) : undefined} onError={isGallery ? () => setImageFailed(true) : undefined} />}
+        {!imageFailed && <img className={`wallpaper-image ${imageLoaded ? "is-loaded" : ""}`} src={imageSource.src} srcSet={imageSource.srcSet} sizes={imageSizes} alt={wallpaper.title} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" onLoad={isGallery ? () => setImageLoaded(true) : undefined} onError={isGallery ? () => setImageFailed(true) : undefined} />}
         {isGallery && imageFailed && <span className="gallery-image-fallback" role="img" aria-label={`پیش‌نمایش «${wallpaper.title}» بارگذاری نشد`}><Info size={18} /><span>پیش‌نمایش در دسترس نیست</span></span>}
         {isGallery && <span className={`gallery-info-overlay ${showGalleryInfo ? "is-visible" : ""}`} aria-hidden="true"><strong>{wallpaper.title}</strong><span>{wallpaper.gameTitle || wallpaper.category}</span></span>}
         {!isGallery && showActions && <span className="image-overlay"><span>مشاهده</span></span>}

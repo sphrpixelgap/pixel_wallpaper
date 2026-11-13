@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "wouter";
 import { ArrowLeft, ArrowRight, Copy, Download, Flag, Heart, Maximize2, Minus, MonitorDown, Plus, RotateCcw, Send, Share2, Smartphone, ThumbsUp, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { formatBytes, ratioLabel, slugifyGame, toggleFavorite, useFavorites } from "@/lib/wallpaper";
+import { getResponsiveImageSource } from "@/lib/imagekit";
 import WallpaperCard from "@/components/WallpaperCard";
 
 type DownloadOption = { id: number | null; resolution: string; width: number | null; height: number | null; targetDevice: string; imageUrl: string; imageMime: string; fileSize: number; downloadCount: number };
@@ -43,6 +44,9 @@ export default function WallpaperDetail() {
     ...variants.filter(item => item.imageKey !== wallpaper.imageKey).map(item => ({ id: item.id, resolution: item.resolution, width: item.width, height: item.height, targetDevice: item.targetDevice, imageUrl: item.imageUrl, imageMime: item.imageMime, fileSize: item.fileSize, downloadCount: item.downloadCount })),
   ] : [], [wallpaper, variants]);
   const selected = downloads.find(item => item.id === selectedId) ?? downloads[0];
+  const previewImageSource = useMemo(() => selected
+    ? getResponsiveImageSource(selected.imageUrl, [640, 960, 1280, 1600, 1920], { quality: 84, maxWidth: selected.width ?? 1920 })
+    : { src: "" }, [selected?.imageUrl, selected?.width]);
   const navigationItems = wallpaper ? [...(relatedQuery.data ?? []).filter(item => item.id !== wallpaper.id), wallpaper].sort((a, b) => a.id - b.id) : [];
   const currentIndex = navigationItems.findIndex(item => item.id === wallpaper?.id);
   const previousWallpaper = currentIndex > 0 ? navigationItems[currentIndex - 1] : undefined;
@@ -100,6 +104,7 @@ export default function WallpaperDetail() {
   if (query.isError && !query.data) return <main className="page-wrap" dir="rtl"><div className="empty-state" role="alert"><h3>بارگذاری والپیپر انجام نشد</h3><p>خطای ارتباط با گنجینه با نبودن تصویر فرق دارد؛ دوباره تلاش کن.</p><button className="button-secondary" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>تلاش دوباره</button></div></main>;
   if (!wallpaper || !selected) return <main className="page-wrap"><div className="page-header"><Link href="/" className="eyebrow"><ArrowRight size={15} /> بازگشت به گنجینه</Link></div><div className="empty-state"><h3>این والپیپر در دسترس نیست</h3><p>ممکن است تصویر حذف شده یا نشانی آن اشتباه باشد.</p><Link className="button-primary" href="/">بازگشت به صفحهٔ اصلی</Link></div></main>;
 
+  const displayImageSource = zoom > 1 ? { src: selected.imageUrl } : previewImageSource;
   const tags = (wallpaper.tags ?? "").split(",").map(tag => tag.trim()).filter(Boolean);
   const onShare = async () => {
     const shareData = { title: wallpaper.title, text: `${wallpaper.title} — پیکسل والپیپر`, url: window.location.href };
@@ -134,7 +139,7 @@ export default function WallpaperDetail() {
           </nav>
         </div>
         <div className="detail-image-viewport" style={{ aspectRatio: selected.width && selected.height ? `${selected.width} / ${selected.height}` : "16 / 9" }}>
-          <img className="detail-image" src={selected.imageUrl} alt={wallpaper.title} fetchPriority="high" decoding="async" style={{ transform: `scale(${zoom})` }} />
+          <img className="detail-image" src={displayImageSource.src} srcSet={displayImageSource.srcSet} sizes="(max-width: 650px) calc(100vw - 30px), 65vw" alt={wallpaper.title} fetchPriority="high" decoding="async" style={{ transform: `scale(${zoom})` }} />
         </div>
         <div className="detail-visual-caption"><span><Maximize2 size={13}/>{ratioLabel(selected.width,selected.height)}</span><span><Download size={13}/>{formatBytes(selected.fileSize)}</span></div>
         <p className="detail-keyboard-hint">میان‌برها: +/− بزرگ‌نمایی، ۰ بازنشانی، ←/→ تصویر مرتبط، Esc جاگرفتن تصویر</p>
