@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { useFavorites } from "@/lib/wallpaper";
 import InstallAppButton from "@/components/InstallAppButton";
-import { Bookmark, ClipboardList, ImagePlus, ImageUp, Moon, Send, Sun } from "lucide-react";
+import { Bookmark, ClipboardList, ImagePlus, ImageUp, Moon, Search, Send, Sun } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { getResponsiveImageSource } from "@/lib/imagekit";
@@ -137,10 +137,18 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
       </div>
       <header className="topbar">
         <div className="topbar-inner">
-          <Link href="/" className="brand" aria-label="صفحه اصلی پیکسل والپیپر">
-            <img src={logoImageSource.src} srcSet={logoImageSource.srcSet} sizes="44px" alt={`نشان ${siteSettings?.brandName || "پیکسل والپیپر"}`} />
-            <span className="brand-copy"><strong>{siteSettings?.brandName || "پیکسل"}</strong><small>{siteSettings?.brandCaption || "والپیپر گیمینگ"}</small></span>
-          </Link>
+          <div className="header-brand-search">
+            <Link href="/" className="brand" aria-label="صفحه اصلی پیکسل والپیپر">
+              <img src={logoImageSource.src} srcSet={logoImageSource.srcSet} sizes="44px" alt={`نشان ${siteSettings?.brandName || "پیکسل والپیپر"}`} />
+              <span className="brand-copy"><strong>{siteSettings?.brandName || "پیکسل"}</strong><small>{siteSettings?.brandCaption || "والپیپر گیمینگ"}</small></span>
+            </Link>
+            <form className="header-search" action="/" method="get" role="search" dir="ltr">
+              <button className="header-search-submit" type="submit" aria-label="جست‌وجوی والپیپر">
+                <Search size={21} strokeWidth={2.2} aria-hidden="true" />
+              </button>
+              <input type="search" name="q" dir="rtl" maxLength={80} autoComplete="off" enterKeyHint="search" aria-label="جست‌وجوی والپیپرها" placeholder="جستجوی والپیپرها..." defaultValue={typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("q") ?? "" : ""} />
+            </form>
+          </div>
           <a className="telegram-button" href="https://t.me/pixel_wallpaper_chanel" target="_blank" rel="noopener noreferrer" aria-label="ورود به کانال تلگرام پیکسل والپیپر">
             <Send size={16} aria-hidden="true" />
             <span>کانال تلگرام</span>
