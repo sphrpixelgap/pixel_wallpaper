@@ -37,14 +37,21 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
     const tones = ["violet", "blue", "cyan", "magenta"];
     let order = 0;
     let toneOrder = 1;
+    const activeToneEntries = new Map<Element, IntersectionObserverEntry>();
     const toneObserver = new IntersectionObserver(entries => {
-      const active = entries
-        .filter(entry => entry.isIntersecting)
-        .sort((a, b) => {
-          const center = window.innerHeight * .48;
-          const distance = (entry: IntersectionObserverEntry) => Math.abs((entry.boundingClientRect.top + entry.boundingClientRect.bottom) / 2 - center);
-          return distance(a) - distance(b);
-        })[0];
+      entries.forEach(entry => {
+        if (entry.isIntersecting) activeToneEntries.set(entry.target, entry);
+        else activeToneEntries.delete(entry.target);
+      });
+      const center = window.innerHeight * .48;
+      const distance = (entry: IntersectionObserverEntry) => {
+        const rect = entry.target.getBoundingClientRect();
+        return Math.abs((rect.top + rect.bottom) / 2 - center);
+      };
+      const active = [...activeToneEntries.values()].sort((a, b) => {
+        const ratioDifference = b.intersectionRatio - a.intersectionRatio;
+        return Math.abs(ratioDifference) > .05 ? ratioDifference : distance(a) - distance(b);
+      })[0];
       if (active?.target instanceof HTMLElement && active.target.dataset.scrollTone) {
         ambience.dataset.tone = active.target.dataset.scrollTone;
       }
@@ -89,6 +96,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
           removedElements.forEach(element => {
             revealObserver?.unobserve(element);
             toneObserver.unobserve(element);
+            activeToneEntries.delete(element);
             observedToneTargets.delete(element);
             if (!element.classList.contains("is-in-view")) {
               element.classList.remove("scroll-reveal");
