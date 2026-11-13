@@ -69,6 +69,10 @@ export function serveStatic(app: Express) {
     setHeaders: (res, filePath) => {
       const relativePath = path.relative(distPath, filePath).split(path.sep).join("/");
       const fileName = path.basename(filePath);
+      if (relativePath === "service-worker.js") {
+        res.setHeader("Cache-Control", "no-store, no-cache, max-age=0, must-revalidate");
+        return;
+      }
       if (relativePath.startsWith("assets/") && /-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$/.test(fileName)) {
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       }
