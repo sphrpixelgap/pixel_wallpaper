@@ -52,13 +52,13 @@ export default function Home() {
   const [sort, setSort] = useState<"newest" | "popular" | "resolution" | "aspect" | "size">("newest");
   const [page, setPage] = useState(1);
   const [featuredPages, setFeaturedPages] = useState<Record<FeaturedKey, number>>({ popular: 1, action: 1, adventure: 1, cyberpunk: 1 });
-  const settings = trpc.siteSettings.public.useQuery();
-  const taxonomyCategories = trpc.taxonomy.categories.useQuery();
+  const settings = trpc.siteSettings.public.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
+  const taxonomyCategories = trpc.taxonomy.categories.useQuery(undefined, { enabled: loadFeatured, staleTime: 120_000, refetchOnWindowFocus: false });
   const siteSettings = settings.data;
   const displayCategories = taxonomyCategories.data ?? fallbackCategories;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setLoadFeatured(true), 800);
+    const timer = window.setTimeout(() => setLoadFeatured(true), 1_200);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -82,14 +82,14 @@ export default function Home() {
   const hasFilters = Boolean(search || category || resolution || device || mood || color || sort !== "newest");
   useEffect(() => { setPage(1); }, [filters]);
 
-  const query = trpc.wallpapers.page.useQuery({ ...filters, page });
-  const popular = trpc.wallpapers.page.useQuery({ sort: "popular", page: featuredPages.popular, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, placeholderData: previous => previous });
-  const actionCollection = trpc.wallpapers.page.useQuery({ category: "اکشن", sort: "popular", page: featuredPages.action, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, placeholderData: previous => previous });
-  const adventureCollection = trpc.wallpapers.page.useQuery({ category: "ماجراجویی", sort: "popular", page: featuredPages.adventure, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, placeholderData: previous => previous });
-  const cyberpunkCollection = trpc.wallpapers.page.useQuery({ category: "سایبرپانک", sort: "popular", page: featuredPages.cyberpunk, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, placeholderData: previous => previous });
-  const dailyPick = trpc.discover.daily.useQuery(undefined, { staleTime: 60_000 });
+  const query = trpc.wallpapers.page.useQuery({ ...filters, page }, { staleTime: 15_000, refetchOnWindowFocus: false });
+  const popular = trpc.wallpapers.page.useQuery({ sort: "popular", page: featuredPages.popular, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, staleTime: 45_000, placeholderData: previous => previous });
+  const actionCollection = trpc.wallpapers.page.useQuery({ category: "اکشن", sort: "popular", page: featuredPages.action, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, staleTime: 45_000, placeholderData: previous => previous });
+  const adventureCollection = trpc.wallpapers.page.useQuery({ category: "ماجراجویی", sort: "popular", page: featuredPages.adventure, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, staleTime: 45_000, placeholderData: previous => previous });
+  const cyberpunkCollection = trpc.wallpapers.page.useQuery({ category: "سایبرپانک", sort: "popular", page: featuredPages.cyberpunk, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, staleTime: 45_000, placeholderData: previous => previous });
+  const dailyPick = trpc.discover.daily.useQuery(undefined, { enabled: loadFeatured, staleTime: 60_000, refetchOnWindowFocus: false });
   const randomPick = trpc.discover.random.useQuery(undefined, { enabled: false, retry: false });
-  const games = trpc.games.list.useQuery();
+  const games = trpc.games.list.useQuery(undefined, { enabled: loadFeatured, staleTime: 120_000, refetchOnWindowFocus: false });
   const suggestions = trpc.wallpapers.suggestions.useQuery({ q: debouncedSearch }, { enabled: debouncedSearch.length >= 2, staleTime: 10_000 });
   const wallpapers = query.data?.items ?? [];
   const suggestionItems = suggestions.data ?? [];

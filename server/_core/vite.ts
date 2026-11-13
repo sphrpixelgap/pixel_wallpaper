@@ -64,7 +64,16 @@ export function serveStatic(app: Express) {
     console.error(`Could not find the build directory: ${distPath}, make sure to build the client first`);
   }
 
-  app.use(express.static(distPath, { index: false }));
+  app.use(express.static(distPath, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      const relativePath = path.relative(distPath, filePath).split(path.sep).join("/");
+      const fileName = path.basename(filePath);
+      if (relativePath.startsWith("assets/") && /-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$/.test(fileName)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+    },
+  }));
   const indexPath = path.resolve(distPath, "index.html");
   app.use((req, res, next) => {
     void sendSeoPage(req, res, indexPath)

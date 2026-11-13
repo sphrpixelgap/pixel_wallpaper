@@ -9,7 +9,7 @@ const LOGO_URL = "https://files.manuscdn.com/user_upload_by_module/session_file/
 
 export default function SiteLayout({ children }: { children: ReactNode }) {
   const favorites = useFavorites();
-  const settings = trpc.siteSettings.public.useQuery();
+  const settings = trpc.siteSettings.public.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
   const siteSettings = settings.data;
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);

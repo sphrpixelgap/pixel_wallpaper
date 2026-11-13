@@ -74,7 +74,7 @@ function wallpaperCard(wallpaper: {
 
 type FeaturedPreview = { url: string; alt: string; markup: string };
 let featuredPreviewCache: { expiresAt: number; value: FeaturedPreview } | undefined;
-const HOME_PAGE_CACHE_MS = 20_000;
+const HOME_PAGE_CACHE_MS = 60_000;
 let homePageCache: { expiresAt: number; value: SeoPage } | undefined;
 let homePagePending: Promise<SeoPage> | undefined;
 async function getFeaturedPreview(): Promise<FeaturedPreview> {
