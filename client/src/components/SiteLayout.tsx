@@ -23,6 +23,45 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
+    const root = document.getElementById("root");
+    if (!root) return;
+
+    const targets = ".page-header, .hero, .section-heading, .discovery-section, .wallpaper-card, .game-hero, .detail-panel, .related-game-cta, .request-card, .request-success, .empty-state";
+    let order = 0;
+    const revealObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("is-in-view");
+        revealObserver.unobserve(entry.target);
+      });
+    }, { threshold: 0.12, rootMargin: "0px 0px -28px 0px" });
+
+    const observeNode = (node: Node) => {
+      if (!(node instanceof Element)) return;
+      const elements = [...(node.matches(targets) ? [node] : []), ...node.querySelectorAll(targets)];
+      elements.forEach(element => {
+        if (element.classList.contains("scroll-reveal")) return;
+        const htmlElement = element as HTMLElement;
+        htmlElement.classList.add("scroll-reveal");
+        htmlElement.style.setProperty("--scroll-order", String(order++ % 5));
+        revealObserver.observe(htmlElement);
+      });
+    };
+
+    observeNode(root);
+    const contentObserver = new MutationObserver(records => {
+      records.forEach(record => record.addedNodes.forEach(observeNode));
+    });
+    contentObserver.observe(root, { childList: true, subtree: true });
+
+    return () => {
+      contentObserver.disconnect();
+      revealObserver.disconnect();
+    };
+  }, []);
+
   return (
     <div className="site-shell" dir="rtl" style={siteSettings?.accentColor ? { "--brand-accent": siteSettings.accentColor } as CSSProperties : undefined}>
       <header className="topbar">

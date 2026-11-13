@@ -584,3 +584,25 @@ html.app-js #root:empty::before { content: "در حال بارگذاری سای�
   .hero::before { animation: none !important; will-change: auto; }
   .brand img { transition: none; }
 }
+
+/* نمایان‌شدن مرحله‌ای محتوا با اسکرول */
+.scroll-reveal {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0) scale(.985);
+  transition:
+    opacity .62s var(--motion-smooth),
+    transform .62s var(--motion-smooth);
+  transition-delay: calc(var(--scroll-order, 0) * 45ms);
+}
+.scroll-reveal.is-in-view {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-reveal,
+  .scroll-reveal.is-in-view {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
