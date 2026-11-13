@@ -13,6 +13,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
   const siteSettings = settings.data;
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const siteShellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -24,19 +25,38 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
   }, [menuOpen]);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
+    if (!("IntersectionObserver" in window)) return;
     const root = document.getElementById("root");
-    if (!root) return;
+    const siteShell = siteShellRef.current;
+    const ambience = siteShell?.querySelector<HTMLElement>(".scroll-ambience");
+    if (!root || !siteShell || !ambience) return;
 
     const targets = ".page-header, .hero, .section-heading, .discovery-section, .wallpaper-card, .game-hero, .detail-panel, .related-game-cta, .request-card, .request-success, .empty-state";
+    const toneTargets = ".hero, .discovery-section, .game-hero, .detail-layout, .request-card, .request-success, .footer";
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const tones = ["violet", "blue", "cyan", "magenta"];
     let order = 0;
-    const revealObserver = new IntersectionObserver(entries => {
+    let toneOrder = 1;
+    const toneObserver = new IntersectionObserver(entries => {
+      const active = entries
+        .filter(entry => entry.isIntersecting)
+        .sort((a, b) => {
+          const center = window.innerHeight * .48;
+          const distance = (entry: IntersectionObserverEntry) => Math.abs((entry.boundingClientRect.top + entry.boundingClientRect.bottom) / 2 - center);
+          return distance(a) - distance(b);
+        })[0];
+      if (active?.target instanceof HTMLElement && active.target.dataset.scrollTone) {
+        ambience.dataset.tone = active.target.dataset.scrollTone;
+      }
+    }, { threshold: [0, .15, .35, .6] });
+    const revealObserver = reducedMotion ? null : new IntersectionObserver(entries => {
       entries.forEach(entry => {
         if (!entry.isIntersecting) return;
         entry.target.classList.add("is-in-view");
-        revealObserver.unobserve(entry.target);
+        revealObserver?.unobserve(entry.target);
       });
     }, { threshold: 0.12, rootMargin: "0px 0px -28px 0px" });
+    const observedToneTargets = new WeakSet<Element>();
 
     const observeNode = (node: Node) => {
       if (!(node instanceof Element)) return;
@@ -46,24 +66,55 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
         const htmlElement = element as HTMLElement;
         htmlElement.classList.add("scroll-reveal");
         htmlElement.style.setProperty("--scroll-order", String(order++ % 5));
-        revealObserver.observe(htmlElement);
+        revealObserver?.observe(htmlElement);
+      });
+      const toneElements = [...(node.matches(toneTargets) ? [node] : []), ...node.querySelectorAll(toneTargets)];
+      toneElements.forEach(element => {
+        if (observedToneTargets.has(element)) return;
+        const htmlElement = element as HTMLElement;
+        const tone = element.matches(".hero, .game-hero") ? "violet" : element.matches(".footer") ? "magenta" : tones[toneOrder++ % tones.length];
+        htmlElement.dataset.scrollTone = tone;
+        observedToneTargets.add(element);
+        toneObserver.observe(element);
       });
     };
 
     observeNode(root);
     const contentObserver = new MutationObserver(records => {
-      records.forEach(record => record.addedNodes.forEach(observeNode));
+      records.forEach(record => {
+        record.addedNodes.forEach(observeNode);
+        record.removedNodes.forEach(node => {
+          if (!(node instanceof Element)) return;
+          const removedElements = [node, ...node.querySelectorAll(`${targets}, ${toneTargets}`)];
+          removedElements.forEach(element => {
+            revealObserver?.unobserve(element);
+            toneObserver.unobserve(element);
+            observedToneTargets.delete(element);
+            if (!element.classList.contains("is-in-view")) {
+              element.classList.remove("scroll-reveal");
+              (element as HTMLElement).style.removeProperty("--scroll-order");
+            }
+          });
+        });
+      });
     });
     contentObserver.observe(root, { childList: true, subtree: true });
 
     return () => {
       contentObserver.disconnect();
-      revealObserver.disconnect();
+      revealObserver?.disconnect();
+      toneObserver.disconnect();
     };
   }, []);
 
   return (
-    <div className="site-shell" dir="rtl" style={siteSettings?.accentColor ? { "--brand-accent": siteSettings.accentColor } as CSSProperties : undefined}>
+    <div ref={siteShellRef} className="site-shell" dir="rtl" style={siteSettings?.accentColor ? { "--brand-accent": siteSettings.accentColor } as CSSProperties : undefined}>
+      <div className="scroll-ambience" data-tone="violet" aria-hidden="true">
+        <span className="scroll-ambience__layer scroll-ambience__violet" />
+        <span className="scroll-ambience__layer scroll-ambience__blue" />
+        <span className="scroll-ambience__layer scroll-ambience__cyan" />
+        <span className="scroll-ambience__layer scroll-ambience__magenta" />
+      </div>
       <header className="topbar">
         <div className="topbar-inner">
           <Link href="/" className="brand" aria-label="صفحه اصلی پیکسل والپیپر">
