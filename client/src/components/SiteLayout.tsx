@@ -48,7 +48,27 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
       </header>
       {children}
       <footer className="footer">
-        <div className="footer-inner"><span className="footer-brand"><i /> {siteSettings?.brandName || "پیکسل والپیپر"}</span><span>{siteSettings?.footerTagline || "برای هر فریم، یک دنیای تازه."}</span><InstallAppButton /><span>© {new Date().getFullYear()}</span></div>
+        <div className="footer-inner">
+          <div className="footer-main">
+            <div className="footer-identity">
+              <Link href="/" className="footer-brand" aria-label="صفحه اصلی پیکسل والپیپر"><i /> {siteSettings?.brandName || "پیکسل والپیپر"}</Link>
+              <p>{siteSettings?.footerTagline || "برای هر فریم، یک دنیای تازه."}</p>
+            </div>
+            <nav className="footer-links" aria-label="پیوندهای مفید">
+              <Link href="/">کشف والپیپرها</Link>
+              <Link href="/collections">مجموعه‌ها</Link>
+              <Link href="/request">درخواست والپیپر</Link>
+              <Link href="/submit-wallpaper">ارسال والپیپر</Link>
+              <Link href="/request/track">پیگیری درخواست</Link>
+              <Link href="/favorites">علاقه‌مندی‌ها</Link>
+            </nav>
+            <div className="footer-social">
+              <strong>شبکه اجتماعی</strong>
+              <a href="https://t.me/pixel_wallpaper_chanel" target="_blank" rel="noopener noreferrer"><Send size={15} aria-hidden="true" /> کانال تلگرام</a>
+            </div>
+          </div>
+          <div className="footer-bottom"><InstallAppButton /><span>© {new Date().getFullYear()} {siteSettings?.brandName || "پیکسل والپیپر"}</span></div>
+        </div>
       </footer>
     </div>
   );
