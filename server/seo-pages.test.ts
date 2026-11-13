@@ -47,16 +47,16 @@ describe("crawler-visible page responses", () => {
       status: 200,
       title: `A <B> & C`,
       description: "A useful description for a route-specific page that is long enough to be meaningful.",
-      canonical: "https://pixelwp-kngtqsrq.manus.space/wallpapers/7",
+      canonical: "https://pixel-wallpaper.kdns.fr/wallpapers/7",
       robots: "index, follow",
       ogType: "article",
-      ogImage: "https://pixelwp-kngtqsrq.manus.space/manus-storage/thumb.webp",
+      ogImage: "https://pixel-wallpaper.kdns.fr/manus-storage/thumb.webp",
       ogImageAlt: "title & image",
       body: "<main><h1>Visible route content</h1></main>",
     });
     expect(html).toContain("<title>A &lt;B&gt; &amp; C</title>");
     expect(html).toContain('content="index, follow"');
-    expect(html).toContain('href="https://pixelwp-kngtqsrq.manus.space/wallpapers/7"');
+    expect(html).toContain('href="https://pixel-wallpaper.kdns.fr/wallpapers/7"');
     expect(html).toContain("<h1>Visible route content</h1>");
     expect(html).not.toContain("__SEO_");
   });

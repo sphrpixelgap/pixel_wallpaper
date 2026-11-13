@@ -1,6 +1,6 @@
 import { collections } from "../shared/collections";
 
-const DEFAULT_SITE_ORIGIN = "https://xfthxfth.dpdns.org";
+const DEFAULT_SITE_ORIGIN = "https://pixel-wallpaper.kdns.fr";
 const DEFAULT_IMAGEKIT_URL_ENDPOINT = "https://ik.imagekit.io/xwqxnxqle";
 
 function resolveSiteOrigin() {

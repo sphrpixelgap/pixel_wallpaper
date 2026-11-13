@@ -49,6 +49,7 @@ describe("SEO discovery documents", () => {
   });
 
   it("points crawlers to the canonical sitemap and excludes API endpoints", () => {
+    expect(SITE_ORIGIN).toBe(process.env.SITE_ORIGIN?.trim() || "https://pixel-wallpaper.kdns.fr");
     expect(buildRobotsTxt()).toBe([
       "User-agent: *",
       "Allow: /",
