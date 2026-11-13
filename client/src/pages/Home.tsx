@@ -1,11 +1,12 @@
 import { Link, useLocation } from "wouter";
 import { ArrowLeft, ArrowUpLeft, ChevronLeft, ChevronRight, Flame, Gamepad2, Image as ImageIcon, Palette, Search, Shuffle, Sparkles, Star, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { categories as fallbackCategories, colors, devices, moods, resolutions, slugifyGame } from "@/lib/wallpaper";
 import WallpaperCard from "@/components/WallpaperCard";
 import InstallAppButton from "@/components/InstallAppButton";
 
+const HeroScene = lazy(() => import("@/components/HeroScene"));
 const LOGO_URL = "https://files.manuscdn.com/user_upload_by_module/session_file/310519664055778542/BvOcnZWtyFfXPqMt.png";
 const PAGE_SIZE = 24;
 const FEATURED_PAGE_SIZE = 4;
@@ -39,6 +40,8 @@ function CollectionPager({ section, page, totalPages, isFetching, onChange }: {
 
 export default function Home() {
   const [, setLocation] = useLocation();
+  const heroRef = useRef<HTMLElement>(null);
+  const [loadHeroScene, setLoadHeroScene] = useState(false);
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -56,6 +59,29 @@ export default function Home() {
   const taxonomyCategories = trpc.taxonomy.categories.useQuery(undefined, { enabled: loadFeatured, staleTime: 120_000, refetchOnWindowFocus: false });
   const siteSettings = settings.data;
   const displayCategories = taxonomyCategories.data ?? fallbackCategories;
+
+  useEffect(() => {
+    const hero = heroRef.current;
+    if (!hero || window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
+    const idleWindow = window as typeof window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    let idleHandle: number | undefined;
+    let fallbackTimer: number | undefined;
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return;
+      observer.disconnect();
+      if (idleWindow.requestIdleCallback) idleHandle = idleWindow.requestIdleCallback(() => setLoadHeroScene(true), { timeout: 1_200 });
+      else fallbackTimer = window.setTimeout(() => setLoadHeroScene(true), 350);
+    }, { rootMargin: "140px" });
+    observer.observe(hero);
+    return () => {
+      observer.disconnect();
+      if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setLoadFeatured(true), 1_200);
@@ -130,7 +156,7 @@ export default function Home() {
 
   return (
     <main className="page-wrap">
-      <section className="hero">
+      <section ref={heroRef} className="hero">
         <div className="hero-content">
           <span className="eyebrow"><i /> {siteSettings?.heroEyebrow || "دنیای تصویرهای گیمینگ"}</span>
           <h1>{siteSettings?.heroTitle || "بازی‌ها را"}<br /><span>{siteSettings?.heroAccentTitle || "به صفحه‌ات بیاور."}</span></h1>
@@ -141,7 +167,10 @@ export default function Home() {
             <InstallAppButton />
           </div>
         </div>
-        <div className="hero-mark" aria-hidden="true"><img src={siteSettings?.logoUrl || LOGO_URL} alt="لوگوی پیکسل والپیپر" /></div>
+        <div className="hero-mark" aria-hidden="true">
+          {loadHeroScene && <Suspense fallback={null}><HeroScene /></Suspense>}
+          <img src={siteSettings?.logoUrl || LOGO_URL} alt="لوگوی پیکسل والپیپر" />
+        </div>
       </section>
 
       <section className="discovery-picks" aria-label="پیشنهادهای روزانه و تصادفی">

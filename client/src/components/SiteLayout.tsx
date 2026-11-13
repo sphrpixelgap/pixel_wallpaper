@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { useFavorites } from "@/lib/wallpaper";
 import InstallAppButton from "@/components/InstallAppButton";
-import { Bookmark, ClipboardList, Compass, ImagePlus, ImageUp, Images, Send } from "lucide-react";
+import { Bookmark, ClipboardList, Compass, ImagePlus, ImageUp, Images, Moon, Send, Sun } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 
@@ -12,8 +12,18 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
   const settings = trpc.siteSettings.public.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
   const siteSettings = settings.data;
   const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try { return localStorage.getItem("pixel-wallpaper-theme") === "light" ? "light" : "dark"; }
+    catch { return "dark"; }
+  });
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const siteShellRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#f7f6fb" : "#0a0711");
+    try { localStorage.setItem("pixel-wallpaper-theme", theme); } catch { /* storage can be unavailable */ }
+  }, [theme]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -133,6 +143,10 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
             <Send size={16} aria-hidden="true" />
             <span>کانال تلگرام</span>
           </a>
+          <button type="button" className="theme-toggle" onClick={() => setTheme(value => value === "dark" ? "light" : "dark")} aria-label={theme === "dark" ? "تغییر به حالت روشن" : "تغییر به حالت تاریک"} aria-pressed={theme === "light"} title={theme === "dark" ? "حالت روشن" : "حالت تاریک"}>
+            {theme === "dark" ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+            <span className="sr-only">{theme === "dark" ? "حالت روشن" : "حالت تاریک"}</span>
+          </button>
           <button ref={menuButtonRef} type="button" className="mobile-menu-button" aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} aria-expanded={menuOpen} aria-controls="main-navigation" onClick={() => setMenuOpen(value => !value)}><span /><span /></button>
           <nav id="main-navigation" className={`main-nav ${menuOpen ? "is-open" : ""}`}>
             <Link href="/" onClick={() => setMenuOpen(false)}><Compass size={18} strokeWidth={1.9} aria-hidden="true" /> کشف والپیپرها</Link>

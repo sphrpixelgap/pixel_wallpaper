@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0a0711" />
+    <script>
+      (() => { try { if (localStorage.getItem("pixel-wallpaper-theme") === "light") { document.documentElement.dataset.theme = "light"; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#f7f6fb"); } } catch {} })();
+    </script>
     <meta name="description" content="__SEO_DESCRIPTION__" />
     <meta name="robots" content="__SEO_ROBOTS__" />
     <meta name="keywords" content="والپیپر گیمینگ, دانلود والپیپر بازی, والپیپر 4K, تصویر پس‌زمینه بازی, والپیپر دسکتاپ" />
