@@ -1,7 +1,7 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useFavorites } from "@/lib/wallpaper";
 import InstallAppButton from "@/components/InstallAppButton";
-import { Bookmark, ClipboardList, ImagePlus, ImageUp, Moon, Search, Send, Sun } from "lucide-react";
+import { Bookmark, ClipboardList, Gamepad2, ImagePlus, ImageUp, Moon, Search, Send, Sun } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { getResponsiveImageSource } from "@/lib/imagekit";
@@ -9,16 +9,19 @@ import { getResponsiveImageSource } from "@/lib/imagekit";
 const LOGO_URL = "/site-logo.webp";
 
 export default function SiteLayout({ children }: { children: ReactNode }) {
+  const [location] = useLocation();
   const favorites = useFavorites();
   const settings = trpc.siteSettings.public.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
   const siteSettings = settings.data;
   const logoImageSource = getResponsiveImageSource(siteSettings?.logoUrl || LOGO_URL, [160, 320], { quality: 80, maxWidth: 320 });
+  const searchQuery = typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("q") ?? "");
   const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     try { return localStorage.getItem("pixel-wallpaper-theme") === "light" ? "light" : "dark"; }
     catch { return "dark"; }
   });
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLElement>(null);
   const siteShellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,9 +35,20 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") { setMenuOpen(false); menuButtonRef.current?.focus(); }
     };
+    const closeOnOutside = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      if (menuRef.current?.contains(event.target) || menuButtonRef.current?.contains(event.target)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
     window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
   }, [menuOpen]);
+
+  useEffect(() => { setMenuOpen(false); }, [location]);
 
   useEffect(() => {
     if (!("IntersectionObserver" in window)) return;
@@ -146,7 +160,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
               <button className="header-search-submit" type="submit" aria-label="جست‌وجوی والپیپر">
                 <Search size={21} strokeWidth={2.2} aria-hidden="true" />
               </button>
-              <input type="search" name="q" dir="rtl" maxLength={80} autoComplete="off" enterKeyHint="search" aria-label="جست‌وجوی والپیپرها" placeholder="جستجوی والپیپرها..." defaultValue={typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("q") ?? "" : ""} />
+              <input type="search" name="q" dir="rtl" maxLength={80} autoComplete="off" enterKeyHint="search" aria-label="جست‌وجوی والپیپرها" placeholder="جست‌وجو..." defaultValue={searchQuery} />
             </form>
           </div>
           <a className="telegram-button" href="https://t.me/pixel_wallpaper_chanel" target="_blank" rel="noopener noreferrer" aria-label="ورود به کانال تلگرام پیکسل والپیپر">
@@ -157,8 +171,16 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
             {theme === "dark" ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
             <span className="sr-only">{theme === "dark" ? "حالت روشن" : "حالت تاریک"}</span>
           </button>
-          <button ref={menuButtonRef} type="button" className="mobile-menu-button" aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} aria-expanded={menuOpen} aria-controls="main-navigation" onClick={() => setMenuOpen(value => !value)}><span /><span /></button>
-          <nav id="main-navigation" className={`main-nav ${menuOpen ? "is-open" : ""}`}>
+          <button ref={menuButtonRef} type="button" className={`mobile-menu-button ${menuOpen ? "is-open" : ""}`} aria-label={menuOpen ? "بستن منو" : "باز کردن منو"} aria-expanded={menuOpen} aria-controls="main-navigation" onClick={() => setMenuOpen(value => !value)}><span /><span /></button>
+          <nav ref={menuRef} id="main-navigation" aria-label="ناوبری اصلی" className={`main-nav ${menuOpen ? "is-open" : ""}`}>
+            <form className="mobile-menu-search" action="/" method="get" role="search">
+              <label className="mobile-menu-search-field">
+                <Search size={19} aria-hidden="true" />
+                <input type="search" name="q" dir="rtl" maxLength={80} autoComplete="off" enterKeyHint="search" aria-label="جست‌وجوی والپیپرها" placeholder="نام بازی یا والپیپر را وارد کن..." defaultValue={searchQuery} />
+              </label>
+              <button type="submit" className="mobile-menu-search-submit">جست‌وجو</button>
+            </form>
+            <a className="mobile-catalog-link" href="/#catalog" onClick={() => setMenuOpen(false)}><Gamepad2 size={18} aria-hidden="true" /> <span>رفتن به گنجینهٔ والپیپرها</span></a>
             <Link href="/request" onClick={() => setMenuOpen(false)}><ImagePlus size={18} strokeWidth={1.9} aria-hidden="true" /> درخواست والپیپر</Link>
             <Link href="/submit-wallpaper" onClick={() => setMenuOpen(false)}><ImageUp size={18} strokeWidth={1.9} aria-hidden="true" /> ارسال والپیپر</Link>
             <Link href="/request/track" onClick={() => setMenuOpen(false)}><ClipboardList size={18} strokeWidth={1.9} aria-hidden="true" /> پیگیری درخواست</Link>
