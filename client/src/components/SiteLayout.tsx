@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useFavorites } from "@/lib/wallpaper";
 import InstallAppButton from "@/components/InstallAppButton";
-import { Bookmark, ClipboardList, Gamepad2, ImagePlus, ImageUp, Moon, Search, Send, Sun } from "lucide-react";
+import { Bookmark, ClipboardList, ImagePlus, ImageUp, Moon, Search, Send, Sun } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { getResponsiveImageSource } from "@/lib/imagekit";
@@ -180,7 +180,6 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
               </label>
               <button type="submit" className="mobile-menu-search-submit">جست‌وجو</button>
             </form>
-            <a className="mobile-catalog-link" href="/#catalog" onClick={() => setMenuOpen(false)}><Gamepad2 size={18} aria-hidden="true" /> <span>رفتن به گنجینهٔ والپیپرها</span></a>
             <Link href="/request" onClick={() => setMenuOpen(false)}><ImagePlus size={18} strokeWidth={1.9} aria-hidden="true" /> درخواست والپیپر</Link>
             <Link href="/submit-wallpaper" onClick={() => setMenuOpen(false)}><ImageUp size={18} strokeWidth={1.9} aria-hidden="true" /> ارسال والپیپر</Link>
             <Link href="/request/track" onClick={() => setMenuOpen(false)}><ClipboardList size={18} strokeWidth={1.9} aria-hidden="true" /> پیگیری درخواست</Link>

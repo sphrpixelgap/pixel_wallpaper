@@ -1069,9 +1069,8 @@ html[data-theme="light"] .header-search input::placeholder { color: #766c80; }
 }
 
 
-/* منوی موبایل: جست‌وجو و میان‌برهای قابل لمس */
-.mobile-menu-search,
-.mobile-catalog-link { display: none; }
+/* منوی موبایل: جست‌وجوی سریع و گزینه‌های قابل لمس */
+.mobile-menu-search { display: none; }
 @keyframes mobile-menu-enter {
   from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1145,20 +1144,6 @@ html[data-theme="light"] .header-search input::placeholder { color: #766c80; }
     cursor: pointer;
   }
   .mobile-menu-search-submit:hover { filter: brightness(1.08); }
-  .mobile-catalog-link {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 46px;
-    margin: 0 0 6px;
-    padding: 11px 13px;
-    border: 1px solid rgba(155, 124, 255, .24);
-    border-radius: 10px;
-    background: rgba(124, 108, 246, .1);
-    color: #e1d1f7;
-    font-size: 13px;
-  }
-  .mobile-catalog-link svg { flex: none; color: #c5a2ff; }
   .mobile-menu-button { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
   .mobile-menu-button.is-open span:first-child { transform: translateY(3.5px) rotate(45deg); }
   .mobile-menu-button.is-open span:last-child { transform: translateY(-3.5px) rotate(-45deg); }
@@ -1171,7 +1156,6 @@ html[data-theme="light"] .header-search input::placeholder { color: #766c80; }
   html[data-theme="light"] .mobile-menu-search-field { border-color: #ded5e8; background: #fff; color: #7041b7; }
   html[data-theme="light"] .mobile-menu-search-field input { color: var(--text); }
   html[data-theme="light"] .mobile-menu-search-field input::placeholder { color: #766c80; }
-  html[data-theme="light"] .mobile-catalog-link { border-color: rgba(112, 65, 183, .2); background: rgba(112, 65, 183, .06); color: #493858; }
 }
 @media (prefers-reduced-motion: reduce) {
   .main-nav.is-open { animation: none; }
