@@ -42,8 +42,9 @@ function CollectionPager({ section, page, totalPages, isFetching, onChange }: {
 export default function Home() {
   const [, setLocation] = useLocation();
   const heroRef = useRef<HTMLElement>(null);
+  const initialUrlQuery = useRef(new URLSearchParams(window.location.search).get("q")?.trim() ?? "");
   const [loadHeroScene, setLoadHeroScene] = useState(false);
-  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
+  const [search, setSearch] = useState(initialUrlQuery.current);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
@@ -56,6 +57,7 @@ export default function Home() {
   const [sort, setSort] = useState<"newest" | "popular" | "resolution" | "aspect" | "size">("newest");
   const [page, setPage] = useState(1);
   const [featuredPages, setFeaturedPages] = useState<Record<FeaturedKey, number>>({ popular: 1, action: 1, adventure: 1, cyberpunk: 1 });
+  const hasFilters = Boolean(search || category || resolution || device || mood || color || sort !== "newest");
   const settings = trpc.siteSettings.public.useQuery(undefined, { staleTime: 60_000, refetchOnWindowFocus: false });
   const taxonomyCategories = trpc.taxonomy.categories.useQuery(undefined, { enabled: loadFeatured, staleTime: 120_000, refetchOnWindowFocus: false });
   const siteSettings = settings.data;
@@ -63,6 +65,7 @@ export default function Home() {
   const displayCategories = taxonomyCategories.data ?? fallbackCategories;
 
   useEffect(() => {
+    if (hasFilters) return;
     const hero = heroRef.current;
     const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
     const constrainedNetwork = connection?.saveData || connection?.effectiveType === "2g" || connection?.effectiveType === "slow-2g";
@@ -85,7 +88,7 @@ export default function Home() {
       if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle);
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
     };
-  }, []);
+  }, [hasFilters]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setLoadFeatured(true), 1_200);
@@ -109,17 +112,29 @@ export default function Home() {
     dominantColor: color ? color as "purple" | "blue" | "red" | "green" | "orange" | "mono" : undefined,
     sort,
   }), [debouncedSearch, category, resolution, device, mood, color, sort]);
-  const hasFilters = Boolean(search || category || resolution || device || mood || color || sort !== "newest");
   useEffect(() => { setPage(1); }, [filters]);
+
+  useEffect(() => {
+    if (!initialUrlQuery.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      const catalog = document.getElementById("catalog");
+      if (!catalog) return;
+      const headerOffset = document.querySelector(".topbar")?.getBoundingClientRect().height ?? 0;
+      const top = catalog.getBoundingClientRect().top + window.scrollY - headerOffset - 12;
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+      window.scrollTo({ top: Math.max(0, top), behavior });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   const query = trpc.wallpapers.page.useQuery({ ...filters, page }, { staleTime: 15_000, refetchOnWindowFocus: false });
   const popular = trpc.wallpapers.page.useQuery({ sort: "popular", page: featuredPages.popular, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, staleTime: 45_000, placeholderData: previous => previous });
   const actionCollection = trpc.wallpapers.page.useQuery({ category: "اکشن", sort: "popular", page: featuredPages.action, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, staleTime: 45_000, placeholderData: previous => previous });
   const adventureCollection = trpc.wallpapers.page.useQuery({ category: "ماجراجویی", sort: "popular", page: featuredPages.adventure, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, staleTime: 45_000, placeholderData: previous => previous });
   const cyberpunkCollection = trpc.wallpapers.page.useQuery({ category: "سایبرپانک", sort: "popular", page: featuredPages.cyberpunk, pageSize: FEATURED_PAGE_SIZE }, { enabled: !hasFilters && loadFeatured, staleTime: 45_000, placeholderData: previous => previous });
-  const dailyPick = trpc.discover.daily.useQuery(undefined, { enabled: loadFeatured, staleTime: 60_000, refetchOnWindowFocus: false });
+  const dailyPick = trpc.discover.daily.useQuery(undefined, { enabled: !hasFilters && loadFeatured, staleTime: 60_000, refetchOnWindowFocus: false });
   const randomPick = trpc.discover.random.useQuery(undefined, { enabled: false, retry: false });
-  const games = trpc.games.list.useQuery(undefined, { enabled: loadFeatured, staleTime: 120_000, refetchOnWindowFocus: false });
+  const games = trpc.games.list.useQuery(undefined, { enabled: !hasFilters && loadFeatured, staleTime: 120_000, refetchOnWindowFocus: false });
   const suggestions = trpc.wallpapers.suggestions.useQuery({ q: debouncedSearch }, { enabled: debouncedSearch.length >= 2, staleTime: 10_000 });
   const wallpapers = query.data?.items ?? [];
   const suggestionItems = suggestions.data ?? [];
@@ -160,7 +175,7 @@ export default function Home() {
 
   return (
     <main className="page-wrap">
-      <section ref={heroRef} className="hero">
+      {!hasFilters && <section ref={heroRef} className="hero">
         <div className="hero-content">
           <span className="eyebrow"><i /> {siteSettings?.heroEyebrow || "دنیای تصویرهای گیمینگ"}</span>
           <h1>{siteSettings?.heroTitle || "بازی‌ها را"}<br /><span>{siteSettings?.heroAccentTitle || "به صفحه‌ات بیاور."}</span></h1>
@@ -175,9 +190,9 @@ export default function Home() {
           {loadHeroScene && <Suspense fallback={null}><HeroScene /></Suspense>}
           <img src={logoImageSource.src} srcSet={logoImageSource.srcSet} sizes="132px" alt="لوگوی پیکسل والپیپر" />
         </div>
-      </section>
+      </section>}
 
-      <section className="discovery-picks" aria-label="پیشنهادهای روزانه و تصادفی">
+      {!hasFilters && <section className="discovery-picks" aria-label="پیشنهادهای روزانه و تصادفی">
         <div className="daily-pick-card">
           <div className="daily-pick-copy"><span className="section-kicker"><Star size={13} /> انتخاب امروز · {dailyPick.data?.day ?? ""}</span><h2>یک فریم برای امروز</h2><p>پیشنهاد روزانه؛ هر روز با یک تصویر تازه از گنجینه.</p>{dailyPick.data?.wallpaper && <Link className="button-secondary" href={`/wallpapers/${dailyPick.data.wallpaper.id}`}>دیدن انتخاب امروز <ArrowLeft size={14} /></Link>}</div>
           {dailyPick.data?.wallpaper ? <div className="daily-pick-art"><WallpaperCard wallpaper={dailyPick.data.wallpaper} compact showActions={false} priority /></div> : <div className="daily-pick-art daily-pick-placeholder"><Sparkles size={28} />{dailyPick.isSuccess && <span>گنجینه هنوز تصویری برای پیشنهاد روزانه ندارد.</span>}</div>}
@@ -187,9 +202,9 @@ export default function Home() {
           <button className="button-primary" type="button" disabled={randomPick.isFetching} onClick={() => void randomPick.refetch()}>{randomPick.isFetching ? <span className="spinner" /> : <Shuffle size={16} />}{randomPick.isFetching ? "در حال انتخاب..." : "یک والپیپر تصادفی"}</button>
           {randomPick.data ? <Link className="random-result" href={`/wallpapers/${randomPick.data.id}`}>{randomPick.data.title} <ArrowUpLeft size={14} /></Link> : randomPick.isSuccess && <p className="random-empty" role="status">در حال حاضر والپیپر فعالی برای انتخاب تصادفی وجود ندارد.</p>}
         </div>
-      </section>
+      </section>}
 
-      {games.data?.length ? <section className="discovery-section">
+      {!hasFilters && games.data?.length ? <section className="discovery-section">
         <div className="section-heading"><div><span className="section-kicker">انتخاب دنیای بازی</span><h2>بازی‌ها</h2><p>مستقیم وارد دنیای بازی دلخواهت شو</p></div><Gamepad2 size={20} color="#bd92ff" /></div>
         <div className="game-strip">{games.data.map(game => game.gameTitle && <Link key={game.gameTitle} className="game-chip" href={`/games/${slugifyGame(game.gameTitle)}`}><span className="game-chip-icon"><Gamepad2 size={17} /></span><span><b>{game.gameTitle}</b><small>{game.wallpaperCount.toLocaleString("fa-IR")} تصویر</small></span><ArrowUpLeft size={15} /></Link>)}</div>
       </section> : null}
